@@ -35,7 +35,7 @@ input{font:inherit;padding:12px;border-radius:12px;border:1px solid var(--bd);ba
 .mid{grid-area:2/2/8/8;display:flex;flex-direction:column;justify-content:center;padding:8px;font-size:clamp(.6rem,1.6vw,.95rem);overflow:hidden}
 .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
 </style></head>
-<body><div id="app">กำลังเชื่อมต่อ…</div>
+<body><div id="err" style="display:none;background:#d62f2f;color:#fff;padding:8px 12px;font-size:.9rem"></div><div id="app">กำลังเชื่อมต่อ…</div>
 <script>
 const T=['start','luck','invest','bad','insure','illness','skip','luck','accident','invest','back','luck','insure','bad','illness','invest','luck','skip','accident','insure','back','luck','bad','invest','illness','insure','accident','luck'];
 const M={start:['🏁','เริ่ม'],luck:['🍀','โชคดี'],bad:['⚡','โชคร้าย'],skip:['⏸️','พัก'],back:['↩️','ถอย'],invest:['📈','ลงทุน'],insure:['🛡️','ประกัน'],accident:['🚑','อุบัติเหตุ'],illness:['🏥','เจ็บป่วย']};
@@ -45,18 +45,24 @@ const POS=T.map((_,i)=>i<8?[0,i]:i<14?[i-7,7]:i<22?[7,7-(i-14)]:[7-(i-21),0]);
 const SB_URL='https://wzwyotzzxycqfwercakh.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno';
 const Q=new URLSearchParams(location.search);const room=(Q.get('room')||'').toUpperCase();
 function mkDb(room){const sb=supabase.createClient(SB_URL,SB_KEY),C={},subs=[];
- const note=()=>subs.forEach(s=>s());
+ const note=()=>subs.forEach(s=>s());let lw=0,sig='';
+ const chk=r=>{if(r&&r.error)showErr('บันทึกไม่ได้: '+r.error.message)};
+ const pull=async()=>{if(Date.now()-lw<1500)return;const{data,error}=await sb.from('game_rows').select('path,data').eq('room',room).order('path');
+  if(error){showErr('อ่านข้อมูลไม่ได้: '+error.message);return}
+  const g=JSON.stringify(data||[]);if(g==sig)return;sig=g;
+  Object.keys(C).forEach(k=>delete C[k]);(data||[]).forEach(r=>C[r.path]=r.data);note()};
+ setInterval(pull,2000);
  const rows=pre=>Object.keys(C).filter(k=>k.startsWith(pre)).map(k=>({id:k.slice(pre.length),data:()=>C[k]}));
  sb.channel('r'+room).on('postgres_changes',{event:'*',schema:'public',table:'game_rows',filter:'room=eq.'+room},e=>{
   if(e.eventType=='DELETE')delete C[e.old.path];else C[e.new.path]=e.new.data;note()})
- .subscribe(async st=>{if(st=='SUBSCRIBED'){const{data}=await sb.from('game_rows').select('path,data').eq('room',room);
-  Object.keys(C).forEach(k=>delete C[k]);(data||[]).forEach(r=>C[r.path]=r.data);note()}});
+ .subscribe(st=>{if(st=='SUBSCRIBED')pull()});pull();
  return{doc:path=>({
-  set:async d=>{C[path]=d;note();await sb.from('game_rows').upsert({room,path,data:d})},
-  update:async d=>{C[path]={...(C[path]||{}),...d};note();await sb.rpc('merge_row',{p_room:room,p_path:path,p_patch:d})},
-  delete:async()=>{delete C[path];note();await sb.from('game_rows').delete().eq('room',room).eq('path',path)},
+  set:async d=>{C[path]=d;note();lw=Date.now();chk(await sb.from('game_rows').upsert({room,path,data:d}))},
+  update:async d=>{C[path]={...(C[path]||{}),...d};note();lw=Date.now();chk(await sb.rpc('merge_row',{p_room:room,p_path:path,p_patch:d}))},
+  delete:async()=>{delete C[path];note();lw=Date.now();chk(await sb.from('game_rows').delete().eq('room',room).eq('path',path))},
   onSnapshot(cb){const f=()=>cb({id:path.split('/')[1],exists:path in C,data:()=>C[path]});subs.push(f);f();return()=>{}}}),
  collection:name=>({onSnapshot(cb){const f=()=>cb({docs:rows(name+'/')});subs.push(f);f();return()=>{}}})}}
+function showErr(m){const e=document.getElementById('err');e.textContent='⚠️ '+m;e.style.display='block'}
 const qr=()=>{const u=location.origin+location.pathname+'?room='+room+'&role=player';return `<div class="card"><div class="row"><img width="110" height="110" alt="QR" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(u)}"><div class="mut">สแกนเพื่อเข้าห้อง <b>${room}</b><br>${esc(u)}</div></div></div>`};
 function newRoom(){const c=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[rnd(24)]).join('');location.search='?room='+c+'&role=host'}
 function goRoom(){const c=document.getElementById('rc').value.trim().toUpperCase();if(c)location.search='?room='+c+'&role=player'}
