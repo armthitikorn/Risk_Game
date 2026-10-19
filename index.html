@@ -1,8 +1,9 @@
 <!doctype html>
 <html lang="th"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>เกมวางแผนชีวิต</title>
+<title>เกมวางแผนชีวิต 3D</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -11,7 +12,7 @@
 :root[data-theme="dark"]{--bg:#0c1522;--fg:#e8edf4;--card:#142234;--mut:#93a0b4;--bd:#243349;--ac:#6fa3db;--acf:#0c1522;--pro:#8b9bff;--inv:#e0a63c;color-scheme:dark}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font-family:"IBM Plex Sans Thai","Noto Sans Thai",system-ui,sans-serif;line-height:1.45;font-variant-numeric:tabular-nums}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"IBM Plex Sans Thai","Noto Sans Thai",system-ui,sans-serif;line-height:1.45;font-variant-numeric:tabular-nums;overflow-x:hidden}
 #app{max-width:1180px;margin:0 auto;padding:14px}
 h1{font-size:1.55rem;font-weight:700;letter-spacing:-.01em;margin:.1em 0}
 h2{font-size:1.3rem;font-weight:600;margin:.2em 0}h3{font-size:1.1rem;font-weight:600;margin:.2em 0}
@@ -36,47 +37,15 @@ input{font:inherit;padding:12px 14px;border-radius:10px;border:1px solid var(--b
 .wrap{display:grid;gap:14px;grid-template-columns:1fr}
 @media(min-width:900px){.wrap{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}}
 
-/* --- เริ่มส่วนที่มีการปรับ 3 มิติ --- */
-.board{display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);gap:5px;aspect-ratio:1;width:100%;padding:10px;background:var(--card);border:1.5px solid var(--bd);border-radius:20px;
-    transform:perspective(1000px) rotateX(18deg);
-    box-shadow:0 25px 30px -10px rgba(0,0,0,0.25), inset 0 4px 0 rgba(255,255,255,0.5);
-    border-bottom:10px solid var(--bd);
-    border-right:3px solid var(--bd);
-    margin-bottom:15px;
-}
-.t{border-radius:8px;background:color-mix(in srgb,var(--c) 10%,var(--card));border:1px solid color-mix(in srgb,var(--c) 28%,var(--bd));color:var(--mut);font-size:clamp(.55rem,1.55vw,.88rem);font-weight:500;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;overflow:hidden;position:relative;min-width:0;
-    border-bottom:4px solid color-mix(in srgb,var(--c) 45%,var(--bd));
-    border-right:2px solid color-mix(in srgb,var(--c) 30%,var(--bd));
-    box-shadow:0 3px 5px rgba(0,0,0,0.1);
-    transform:translateY(-2px);
-}
-.t svg{width:clamp(14px,3.4vw,26px);height:clamp(14px,3.4vw,26px);color:var(--c)}
-.t.start{--c:var(--ac)}.t.luck{--c:var(--gain)}.t.bad,.t.accident,.t.illness{--c:var(--loss)}.t.skip,.t.back{--c:var(--mov)}.t.invest{--c:var(--inv)}.t.insure{--c:var(--pro)}
-.pw{position:absolute;inset:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;pointer-events:none}
-.pw span{width:1.75em;height:1.75em;margin:-3px;border-radius:50%;color:#fff;border:2px solid var(--card);font-size:clamp(.7rem,2.5vw,1.1rem);font-weight:700;display:grid;place-items:center;line-height:1;
-    box-shadow:0 6px 8px #0006;
-    border-bottom:3px solid rgba(0,0,0,0.2);
-    transform:translateY(-3px);
-}
-.pw span.me{
-    box-shadow:0 0 0 3px #ffd60a,0 6px 8px #0006;
-    border-bottom:3px solid #d4a000;
-    transform:translateY(-3px);
-}
-.pw span.mv{animation:hop .26s}
-@keyframes hop{0%{transform:translateY(-3px)}40%{transform:translateY(calc(-40% - 3px)) scale(1.2)}100%{transform:translateY(-3px)}}
-.mid{grid-area:2/2/8/8;display:flex;flex-direction:column;justify-content:center;padding:10px 12px;font-size:clamp(.7rem,1.9vw,1.15rem);overflow:hidden}
-.board .mid{
-    border:2px dashed color-mix(in srgb,var(--bd) 70%,transparent);
-    border-radius:14px;
-    background:color-mix(in srgb,var(--bg) 40%,transparent);
-    box-shadow:inset 0 6px 12px rgba(0,0,0,0.06);
-}
-/* --- จบส่วนที่มีการปรับ 3 มิติ --- */
-
-@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* --- 3D Viewport Container --- */
+.board-3d-wrap{position:relative;width:100%;aspect-ratio:1;border-radius:20px;overflow:hidden;box-shadow:0 20px 30px rgba(0,0,0,0.25);border:2px solid var(--bd);background:#222}
+#c3d{width:100%;height:100%;display:block}
+.overlay-info{position:absolute;top:12px;left:12px;right:12px;pointer-events:none;display:flex;justify-content:space-between;align-items:flex-start}
+.overlay-card{background:rgba(255,255,255,0.88);backdrop-filter:blur(8px);border-radius:12px;padding:10px 14px;box-shadow:0 4px 12px rgba(0,0,0,0.15);pointer-events:auto;max-width:260px}
+@media(prefers-color-scheme:dark){.overlay-card{background:rgba(20,34,52,0.88)}}
 </style></head>
 <body><div id="err" style="display:none;background:#d62f2f;color:#fff;padding:8px 12px;font-size:.9rem"></div><div id="app">กำลังเชื่อมต่อ…</div>
+
 <script>
 const T=['start','luck','invest','bad','insure','illness','skip','luck','accident','invest','back','luck','insure','bad','illness','invest','luck','skip','accident','insure','back','luck','bad','invest','illness','insure','accident','luck'];
 const M={start:['🏁','เงินเดือน'],luck:['🍀','รายได้พิเศษ'],bad:['⚡','รายจ่ายฉุกเฉิน'],skip:['⏸️','พักฟื้น'],back:['↩️','ภาระหนี้'],invest:['📈','ลงทุน'],insure:['🛡️','ประกัน'],accident:['🚑','อุบัติเหตุ'],illness:['🏥','เจ็บป่วย']};
@@ -90,6 +59,7 @@ const COL=['#e5484d','#3e63dd','#30a46c','#e08a00','#8e4ec6','#12a594','#d6409f'
 const POS=T.map((_,i)=>i<8?[0,i]:i<14?[i-7,7]:i<22?[7,7-(i-14)]:[7-(i-21),0]);
 const SB_URL='https://wzwyotzzxycqfwercakh.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno';
 const Q=new URLSearchParams(location.search);const room=(Q.get('room')||'').toUpperCase();
+
 function mkDb(room){const sb=supabase.createClient(SB_URL,SB_KEY),C={},subs=[];
  const note=()=>subs.forEach(s=>s());let lw=0,sig='';
  const chk=r=>{if(r&&r.error)showErr('บันทึกไม่ได้: '+r.error.message)};
@@ -108,6 +78,7 @@ function mkDb(room){const sb=supabase.createClient(SB_URL,SB_KEY),C={},subs=[];
   delete:async()=>{delete C[path];note();lw=Date.now();chk(await sb.from('game_rows').delete().eq('room',room).eq('path',path))},
   onSnapshot(cb){const f=()=>cb({id:path.split('/')[1],exists:path in C,data:()=>C[path]});subs.push(f);f();return()=>{}}}),
  collection:name=>({onSnapshot(cb){const f=()=>cb({docs:rows(name+'/')});subs.push(f);f();return()=>{}}})}}
+
 function showErr(m){const e=document.getElementById('err');e.textContent='⚠️ '+m;e.style.display='block'}
 const qr=()=>{const u=location.origin+location.pathname+'?room='+room+'&role=player';return `<div class="card"><div class="row"><img width="110" height="110" alt="QR" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(u)}"><div class="mut">สแกนเพื่อเข้าห้อง <b>${room}</b><br>${esc(u)}</div></div></div>`};
 function newRoom(){const c=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[rnd(24)]).join('');location.search='?room='+c+'&role=host'}
@@ -158,6 +129,7 @@ async function roll(){if(busy)return;busy=true;render();
  p.pos=(p.pos+d)%28;const t=T[p.pos];m+=' → '+M[t][1]+' ';
  if(t=='invest'||t=='insure'){P[uid]=p;await db.doc('players/'+uid).update({pos:p.pos,cash:p.cash});choice={t,m};busy=false;render();return}
  m+=eff(p,t);await fin(pick(p),m)}
+
 async function skipT(){const p=P[uid];await fin({skip:p.skip-1},p.name+' พักตานี้')}
 async function inv(k){const p={...P[uid],ins:[...P[uid].ins],cov:{...(P[uid].cov||{})}};let m=p.name+' ผ่านช่องลงทุน';
  if(k!='no'){const hi=k=='hi',mk=mkt(),w=MKT[mk][k],win=Math.random()<w[0],v=win?w[1]:w[2];p.cash+=v;
@@ -179,24 +151,211 @@ async function reset(){if(!arm){arm=true;render();return}arm=false;
  for(const i of ids())await db.doc('players/'+i).delete();await db.doc('game/main').set({phase:'lobby'})}
 function setRole(r){role=r;render()}
 
+/* --- THREE.JS 3D ENGINE --- */
+let scene, camera, renderer, pawnMeshes = {}, tilePositions3D = [];
+const TILE_COLORS = { start: 0x1b3a5c, luck: 0x1e9e72, bad: 0xd6453d, skip: 0x7a8799, back: 0x7a8799, invest: 0xb9801a, insure: 0x5b6ee1, accident: 0xd6453d, illness: 0xd6453d };
+
+function init3D() {
+  const container = document.getElementById('board-container');
+  if (!container || scene) return;
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x111823);
+
+  const aspect = 1;
+  camera = new THREE.PerspectiveCamera(40, aspect, 0.1, 1000);
+  camera.position.set(0, 16, 14);
+  camera.lookAt(0, -0.5, 0);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, canvas: document.getElementById('c3d') });
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  // Lights
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+  scene.add(ambientLight);
+
+  const dirLight = new THREE.DirectionalLight(0xfffaed, 0.95);
+  dirLight.position.set(12, 20, 10);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.width = 1024;
+  dirLight.shadow.mapSize.height = 1024;
+  dirLight.shadow.camera.near = 0.5;
+  dirLight.shadow.camera.far = 50;
+  scene.add(dirLight);
+
+  // Main Board Base
+  const baseGeo = new THREE.BoxGeometry(10.2, 0.6, 10.2);
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0x2a1f17, roughness: 0.4, metalness: 0.1 });
+  const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+  baseMesh.position.y = -0.3;
+  baseMesh.receiveShadow = true;
+  scene.add(baseMesh);
+
+  // Inner Board Field
+  const innerGeo = new THREE.BoxGeometry(7.6, 0.62, 7.6);
+  const innerMat = new THREE.MeshStandardMaterial({ color: 0xeef1f5, roughness: 0.2 });
+  const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+  innerMesh.position.y = -0.28;
+  innerMesh.receiveShadow = true;
+  scene.add(innerMesh);
+
+  // Create 3D Tiles
+  tilePositions3D = [];
+  POS.forEach(([r, c], i) => {
+    const x = (c - 3.5) * 1.18;
+    const z = (r - 3.5) * 1.18;
+    tilePositions3D.push(new THREE.Vector3(x, 0.1, z));
+
+    const tileType = T[i];
+    const color = TILE_COLORS[tileType] || 0xffffff;
+    const tileGeo = new THREE.BoxGeometry(1.08, 0.25, 1.08);
+    const tileMat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.3, metalness: 0.05 });
+    const tileMesh = new THREE.Mesh(tileGeo, tileMat);
+    tileMesh.position.set(x, 0, z);
+    tileMesh.castShadow = true;
+    tileMesh.receiveShadow = true;
+    scene.add(tileMesh);
+  });
+
+  // 3D Decor Props (Hospital, Dice, Houses matching image feel)
+  createBuildingProps();
+
+  // Animation Loop
+  function animate() {
+    requestAnimationFrame(animate);
+    updatePawnAnimations();
+    renderer.render(scene, camera);
+  }
+  animate();
+}
+
+function createBuildingProps() {
+  // Mini Hospital Model in Center
+  const hospGroup = new THREE.Group();
+  const bodyGeo = new THREE.BoxGeometry(1.8, 1.4, 1.4);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.castShadow = true;
+  hospGroup.add(body);
+
+  // Red Cross
+  const crossMat = new THREE.MeshBasicMaterial({ color: 0xd6453d });
+  const c1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 0.05), crossMat);
+  const c2 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 0.05), crossMat);
+  c1.position.set(0, 0.2, 0.71);
+  c2.position.set(0, 0.2, 0.71);
+  hospGroup.add(c1, c2);
+
+  hospGroup.position.set(1.8, 0.7, -1.8);
+  scene.add(hospGroup);
+
+  // Decorative 3D Dice
+  const diceGeo = new THREE.BoxGeometry(1, 1, 1);
+  const diceMat = new THREE.MeshStandardMaterial({ color: 0xe08a00, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.9 });
+  const dice = new THREE.Mesh(diceGeo, diceMat);
+  dice.rotation.set(0.4, 0.6, 0.2);
+  dice.position.set(-2.2, 0.5, 2.2);
+  dice.castShadow = true;
+  scene.add(dice);
+}
+
+function getOrCreatePawn(id) {
+  if (pawnMeshes[id]) return pawnMeshes[id];
+
+  const pawnGroup = new THREE.Group();
+  const hexColor = parseInt(col(id).replace('#', '0x'));
+  const mat = new THREE.MeshStandardMaterial({ color: hexColor, roughness: 0.2, metalness: 0.1 });
+
+  // Base Pedestal
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.15, 16), mat);
+  base.position.y = 0.075;
+  base.castShadow = true;
+  pawnGroup.add(base);
+
+  // Body
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 0.65, 16), mat);
+  body.position.y = 0.45;
+  body.castShadow = true;
+  pawnGroup.add(body);
+
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 16), mat);
+  head.position.y = 0.88;
+  head.castShadow = true;
+  pawnGroup.add(head);
+
+  pawnGroup.userData = { targetPos: new THREE.Vector3(), currentTile: -1 };
+  scene.add(pawnGroup);
+  pawnMeshes[id] = pawnGroup;
+  return pawnGroup;
+}
+
+function update3DPawns() {
+  if (!scene) return;
+  const currentIds = part();
+
+  // Remove disconnected pawns
+  Object.keys(pawnMeshes).forEach(id => {
+    if (!currentIds.includes(id)) {
+      scene.remove(pawnMeshes[id]);
+      delete pawnMeshes[id];
+    }
+  });
+
+  currentIds.forEach(id => {
+    const p = P[id];
+    if (!p) return;
+    const pawn = getOrCreatePawn(id);
+    const tileIdx = disp[id] != null ? disp[id] : p.pos;
+
+    if (tilePositions3D[tileIdx]) {
+      const targetPos = tilePositions3D[tileIdx].clone();
+
+      // Spread pawns slightly if multiple on same tile
+      const sameTileCount = currentIds.filter(other => (disp[other] != null ? disp[other] : P[other].pos) === tileIdx).indexOf(id);
+      targetPos.x += (sameTileCount % 2 === 0 ? 1 : -1) * (sameTileCount * 0.12);
+      targetPos.z += (sameTileCount > 1 ? 0.12 : 0);
+
+      if (pawn.userData.currentTile === -1) {
+        pawn.position.copy(targetPos);
+      }
+      pawn.userData.targetPos = targetPos;
+      pawn.userData.currentTile = tileIdx;
+    }
+  });
+}
+
+function updatePawnAnimations() {
+  Object.keys(pawnMeshes).forEach(id => {
+    const pawn = pawnMeshes[id];
+    const target = pawn.userData.targetPos;
+    if (!target) return;
+
+    const dist = pawn.position.distanceTo(target);
+    if (dist > 0.02) {
+      pawn.position.lerp(target, 0.15);
+      // Hop motion effect
+      pawn.position.y = 0.1 + Math.sin(Math.min(1, dist) * Math.PI) * 0.6;
+    } else {
+      pawn.position.copy(target);
+      pawn.position.y = 0.1;
+    }
+  });
+}
+
+let disp={},stp={};
+function sync(){ids().forEach(id=>{const p=P[id];if(disp[id]==null){disp[id]=p.pos;return}if(disp[id]!=p.pos&&!stp[id]){stp[id]=1;step(id)}}); update3DPawns();}
+function step(id){const p=P[id];if(!p){stp[id]=0;return}const c=disp[id],t=p.pos;
+ if(c==t){stp[id]=0;render();return}
+ const fw=(t-c+28)%28;disp[id]=fw<=6?(c+1)%28:(c+27)%28;render();setTimeout(()=>step(id),260)}
+
 const podium=()=>`<div class="card"><h2>🏆 จบเกม</h2>${rank().slice(0,3).map((id,i)=>`<div class="big">${'🥇🥈🥉'.slice(i*2,i*2+2)} ${esc(P[id].name)} <span class="mut">฿${f(score(P[id]))}</span></div>`).join('')}</div>`;
 const hl=t=>{let h=esc(t);const I=ids();I.forEach((id,i)=>{const n=esc(P[id].name);if(n)h=h.split(n).join('\u0001'+i+'\u0002')});
  return h.replace(/\u0001(\d+)\u0002/g,(_,i)=>`<b style="color:${col(I[i])}">${esc(P[I[i]].name)}</b>`)};
 const logs=n=>(G.log||[]).slice(0,n).map(l=>`<div class="lg">• ${hl(l)}</div>`).join('');
 
-const IP={start:'M5 21V4M5 4h11l-2 4 2 4H5',luck:'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.5l-5.4 3 1.2-6L3.3 9.3l6.1-.7z',bad:'M13 2L4 14h7l-1 8 9-12h-7z',skip:'M8 5v14M16 5v14',back:'M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3',invest:'M3 17l6-6 4 4 8-8M15 7h6v6',insure:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',accident:'M12 3l10 18H2zM12 10v5M12 18v.01',illness:'M9 4h6v5h5v6h-5v5H9v-5H4V9h5z'};
-const IC=Object.fromEntries(Object.entries(IP).map(([k,d])=>[k,`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`]));
-const AV=['🐱','🐶','🐰','🦊','🐼','🐯','🐸','🐵','🦄','🐧'];
-const av=id=>esc(((P[id]||{}).name||'?').slice(0,1).toUpperCase());
-let disp={},stp={};
-function sync(){ids().forEach(id=>{const p=P[id];if(disp[id]==null){disp[id]=p.pos;return}if(disp[id]!=p.pos&&!stp[id]){stp[id]=1;step(id)}})}
-function step(id){const p=P[id];if(!p){stp[id]=0;return}const c=disp[id],t=p.pos;
- if(c==t){stp[id]=0;render();return}
- const fw=(t-c+28)%28;disp[id]=fw<=6?(c+1)%28:(c+27)%28;render();setTimeout(()=>step(id),260)}
-function cellsHtml(){return T.map((t,i)=>{const[r,c]=POS[i];
- const pw=part().filter(id=>disp[id]==i&&P[id].st=='ok').map(id=>`<span class="${id==uid?'me':''} ${stp[id]?'mv':''}" style="background:${col(id)}">${av(id)}</span>`).join('');
- return `<div class="t ${t}" style="grid-row:${r+1};grid-column:${c+1}">${IC[t]}<span>${M[t][1]}</span><div class="pw">${pw}</div></div>`}).join('')}
-const mini=()=>{const cur=G.phase=='play'&&G.order?P[G.order[G.turn]]:null;return `<div class="mid">${cur?`<b style="color:${col(G.order[G.turn])}">▶ ${esc(cur.name)}</b>`:''}${G.phase=='play'?mbanner():''}${logs(2)}</div>`};
 let FC='',FN=3,AR={},asb;
 async function adLoad(){const{data,error}=await asb.from('game_rows').select('room,path,data').gte('updated_at',new Date(Date.now()-864e5).toISOString());
  if(error){showErr(error.message);return}
@@ -216,15 +375,28 @@ function admin(){asb=supabase.createClient(SB_URL,SB_KEY);adLoad();setInterval(a
 const finalBtn=()=>{if(!G.final)return'';const i=rank().indexOf(uid);
  if(i<0||i>=(G.adv||3)||P[uid].st!='ok')return '<div class="card">ขอบคุณที่ร่วมเล่น 🎉</div>';
  return `<div class="card lv0"><h3>🏆 คุณผ่านเข้ารอบชิง!</h3><button style="width:100%;font-size:1.2rem" onclick="location.search='?room=${G.final}&role=player&name='+encodeURIComponent(P[uid].name)">ไปห้องชิงชนะเลิศ</button></div>`};
+
+function renderBoard3D() {
+  const cur = G.phase=='play' && G.order ? P[G.order[G.turn]] : null;
+  return `<div class="board-3d-wrap" id="board-container">
+    <canvas id="c3d"></canvas>
+    <div class="overlay-info">
+      <div class="overlay-card">
+        ${cur ? `<b style="color:${col(G.order[G.turn])}">▶ ตาของ: ${esc(cur.name)}</b>` : '<span class="mut">กระดาน 3D</span>'}
+        ${G.phase=='play' ? mbanner() : ''}
+        ${logs(1)}
+      </div>
+    </div>
+  </div>`;
+}
+
 function host(){
- const cells=cellsHtml();
  const cur=G.phase=='play'?P[G.order[G.turn]]:null;
- const mid=`<div class="mid card"><h2>ตาที่ ${G.round||0}/${G.max||20}</h2>${G.phase=='play'?mbanner():''}${cur?`<div class="big" style="color:${col(G.order[G.turn])}">▶ ${esc(cur.name)}</div>`:`<div class="mut">${G.phase=='end'?'จบเกม':'รอผู้เล่น…'}</div>`}${logs(5)}</div>`;
  const list=part().map(id=>{const p=P[id],o=p.st!='ok';
   return `<div class="card ${o?'out':'lv'+lv(p)}"><div class="row"><b style="color:${col(id)}">● ${esc(p.name)} ${cur&&G.order[G.turn]==id?'▶':''}</b><span>฿${f(p.cash)}</span></div><div>${o?ST[p.st]+' (ผี 👻)':chips(p)}</div></div>`}).join('');
- return `<div class="row"><div><h1>เกมวางแผนชีวิต</h1><div class="mut">ห้อง <b>${room}</b></div></div><div>${G.phase!='play'&&G.phase!='end'?`<button onclick="start()" ${ids().length<2?'disabled':''}>เริ่มเกม (${ids().length} คน)</button>`:''}<button class="g" onclick="reset()">${arm?'กดอีกครั้งเพื่อยืนยัน':'รีเซ็ต'}</button></div></div>
+ return `<div class="row"><div><h1>เกมวางแผนชีวิต (3D Mode)</h1><div class="mut">ห้อง <b>${room}</b></div></div><div>${G.phase!='play'&&G.phase!='end'?`<button onclick="start()" ${ids().length<2?'disabled':''}>เริ่มเกม (${ids().length} คน)</button>`:''}<button class="g" onclick="reset()">${arm?'กดอีกครั้งเพื่อยืนยัน':'รีเซ็ต'}</button></div></div>
  ${G.phase=='end'?podium():''}
- <div class="wrap"><div class="board">${cells}${mid}</div><div>${G.phase=='lobby'?qr():''}${list}<div class="mut">สถานะการเงิน: 🟢 เงินสำรองเพียงพอ 🟡 เริ่มตึงตัว 🟠 เสี่ยงขาดสภาพคล่อง 🔴 วิกฤตการเงิน</div></div></div>`}
+ <div class="wrap">${renderBoard3D()}<div>${G.phase=='lobby'?qr():''}${list}<div class="mut">สถานะการเงิน: 🟢 เงินสำรองเพียงพอ 🟡 เริ่มตึงตัว 🟠 เสี่ยงขาดสภาพคล่อง 🔴 วิกฤตการเงิน</div></div></div>`}
 
 function play(){const p=P[uid];
  if(p&&G.phase!='lobby'&&G.order&&!G.order.includes(uid))return '<div class="card"><h3>เกมเริ่มไปแล้ว</h3><div class="mut">คุณเข้าห้องไม่ทัน รอเล่นรอบหน้านะ</div></div>';
@@ -240,12 +412,22 @@ function play(){const p=P[uid];
   else if(p.skip>0)act=`<div class="card"><h3>⏸️ ติดพัก</h3><button onclick="skipT()" ${busy?'disabled':''}>ข้ามตานี้</button></div>`;
   else act=`<div class="card"><h2>ตาของคุณ!</h2><button style="font-size:1.4rem;width:100%;padding:20px" onclick="roll()" ${busy?'disabled':''}>${busy?'🎲 กำลังทอย…':'🎲 ทอยลูกเต๋า'}</button></div>`}
  else act=`<div class="card mut">รอ <b style="color:${col(G.order[G.turn])}">${esc((P[G.order[G.turn]]||{}).name||'')}</b> เล่น…</div>`;
- return `<div class="board">${cellsHtml()}${mini()}</div><div class="card ${out?'out':'lv'+lv(p)}"><div class="row"><h2 style="color:${col(uid)}">${esc(p.name)}</h2><span class="mut">ช่อง ${M[tl][0]} ${M[tl][1]} · รอบ ${p.lap||0}</span></div><div class="big">฿${f(p.cash)}</div><div class="mut">เงินสดคงเหลือ (บาท)</div>${out?ST[p.st]:chips(p)}</div>${act}<div>${logs(3)}</div>`}
+ return `${renderBoard3D()}<div class="card ${out?'out':'lv'+lv(p)}"><div class="row"><h2 style="color:${col(uid)}">${esc(p.name)}</h2><span class="mut">ช่อง ${M[tl][0]} ${M[tl][1]} · รอบ ${p.lap||0}</span></div><div class="big">฿${f(p.cash)}</div><div class="mut">เงินสดคงเหลือ (บาท)</div>${out?ST[p.st]:chips(p)}</div>${act}<div>${logs(3)}</div>`}
 
 function render(){if(P)sync();if(document.activeElement&&document.activeElement.tagName=='INPUT')return;
- if(!room){$.innerHTML='<h1>เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="newRoom()">🖥️ สร้างห้อง (ผู้ควบคุม)</button><div class="card"><input id="rc" placeholder="รหัสห้อง 4 ตัวอักษร" maxlength="6"><button onclick="goRoom()">📱 เข้าห้อง (ผู้เล่น)</button></div><button class="g" style="width:100%" onclick="location.search=&quot;?admin=1&quot;">📊 ผู้ดูแลทุกห้อง</button>';return}
+ if(!room){$.innerHTML='<h1>เกมวางแผนชีวิต (3D)</h1><button style="width:100%;padding:24px" onclick="newRoom()">🖥️ สร้างห้อง (ผู้ควบคุม)</button><div class="card"><input id="rc" placeholder="รหัสห้อง 4 ตัวอักษร" maxlength="6"><button onclick="goRoom()">📱 เข้าห้อง (ผู้เล่น)</button></div><button class="g" style="width:100%" onclick="location.search=&quot;?admin=1&quot;">📊 ผู้ดูแลทุกห้อง</button>';return}
  if(!db){$.innerHTML='<div class="card">กำลังเชื่อมต่อ…</div>';return}
- $.innerHTML=role==null?`<h1>เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="setRole('player')">📱 ผู้เล่น (มือถือ)</button><button class="g" style="width:100%;padding:24px" onclick="setRole('host')">🖥️ ผู้ควบคุม (คอม)</button>`:role=='host'?host():play()}
+ const htmlOutput = role==null?`<h1>เกมวางแผนชีวิต (3D)</h1><button style="width:100%;padding:24px" onclick="setRole('player')">📱 ผู้เล่น (มือถือ)</button><button class="g" style="width:100%;padding:24px" onclick="setRole('host')">🖥️ ผู้ควบคุม (คอม)</button>`:role=='host'?host():play();
+ 
+ const hadCanvas = !!document.getElementById('c3d');
+ $.innerHTML = htmlOutput;
+ if (!hadCanvas || !scene) {
+   scene = null;
+   setTimeout(() => { init3D(); update3DPawns(); }, 50);
+ } else {
+   update3DPawns();
+ }
+}
 
 (function(){if(Q.get('admin')){admin();return}if(!room){render();return}
  try{uid=localStorage.getItem('uid')}catch(e){}
