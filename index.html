@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>เกมวางแผนชีวิต</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+:root{--bg:#f6f4ef;--fg:#1d1d1b;--card:#fff;--mut:#6b6a66;--bd:#ddd9cf;--ac:#2f6fed;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17181b;--fg:#f1efe9;--card:#24262b;--mut:#a3a199;--bd:#3a3d44;--ac:#6c9bff;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#17181b;--fg:#f1efe9;--card:#24262b;--mut:#a3a199;--bd:#3a3d44;--ac:#6c9bff;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"Noto Sans Thai",system-ui,sans-serif;line-height:1.4}
+#app{max-width:1100px;margin:0 auto;padding:12px}
+h1,h2,h3{margin:.2em 0}
+button{font:inherit;border:0;border-radius:12px;padding:12px 16px;background:var(--ac);color:#fff;font-weight:600;cursor:pointer;margin:4px 4px 4px 0}
+button.g{background:var(--card);color:var(--fg);border:1px solid var(--bd)}
+button:disabled{opacity:.5}
+input{font:inherit;padding:12px;border-radius:12px;border:1px solid var(--bd);background:var(--card);color:var(--fg);width:100%;margin:8px 0}
+.card{background:var(--card);border:3px solid var(--bd);border-radius:16px;padding:12px;margin:8px 0}
+.lv0{border-color:#2e9e5b}.lv1{border-color:#e0b400}.lv2{border-color:#ef7d00}
+.lv3{border-color:#d62f2f;animation:pl 1s infinite}
+.out{opacity:.55;border-color:var(--bd);filter:grayscale(1)}
+@keyframes pl{0%,100%{box-shadow:0 0 0 0 #d62f2f88}50%{box-shadow:0 0 16px 4px #d62f2f}}
+.big{font-size:2rem;font-weight:800}
+.mut{color:var(--mut);font-size:.9rem}
+.chip{display:inline-block;background:var(--bg);border:1px solid var(--bd);border-radius:20px;padding:2px 10px;margin:2px;font-size:.85rem}
+.wrap{display:grid;gap:12px;grid-template-columns:1fr}
+@media(min-width:900px){.wrap{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}}
+.board{display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);gap:3px;aspect-ratio:1;width:100%}
+.t{border-radius:8px;background:var(--card);border:1px solid var(--bd);font-size:clamp(.5rem,1.4vw,.75rem);text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;position:relative;min-width:0}
+.t i{font-style:normal;font-size:clamp(.9rem,2.4vw,1.4rem)}
+.t.luck{background:#2e9e5b22}.t.bad,.t.accident,.t.illness{background:#d62f2f1f}.t.skip,.t.back{background:#ef7d0022}.t.invest{background:#2f6fed22}.t.insure{background:#8e44ad22}.t.start{background:#e0b40033}
+.pw{display:flex;flex-wrap:wrap;justify-content:center;gap:1px}
+.pw span{width:1.5em;height:1.5em;border-radius:50%;color:#fff;font-size:.8em;display:grid;place-items:center;font-weight:700}
+.mid{grid-area:2/2/8/8;display:flex;flex-direction:column;justify-content:center;padding:8px;font-size:clamp(.6rem,1.6vw,.95rem);overflow:hidden}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+</style></head>
+<body><div id="app">กำลังเชื่อมต่อ…</div>
+<script>
+const T=['start','luck','invest','bad','insure','illness','skip','luck','accident','invest','back','luck','insure','bad','illness','invest','luck','skip','accident','insure','back','luck','bad','invest','illness','insure','accident','luck'];
+const M={start:['🏁','เริ่ม'],luck:['🍀','โชคดี'],bad:['⚡','โชคร้าย'],skip:['⏸️','พัก'],back:['↩️','ถอย'],invest:['📈','ลงทุน'],insure:['🛡️','ประกัน'],accident:['🚑','อุบัติเหตุ'],illness:['🏥','เจ็บป่วย']};
+const INS={life:'ชีวิต',hl:'สุขภาพ',acc:'อุบัติเหตุ'},PR={life:2000,hl:1500,acc:1000};
+const COL=['#e6453a','#2f6fed','#2e9e5b','#c47b00','#8e44ad','#00a5a8','#d6336c','#5f6b7a','#7a4a1e','#3b5bdb'];
+const POS=T.map((_,i)=>i<8?[0,i]:i<14?[i-7,7]:i<22?[7,7-(i-14)]:[7-(i-21),0]);
+const SB_URL='YOUR_SUPABASE_URL',SB_KEY='YOUR_SUPABASE_ANON_KEY';
+const Q=new URLSearchParams(location.search);const room=(Q.get('room')||'').toUpperCase();
+function mkDb(room){const sb=supabase.createClient(SB_URL,SB_KEY),C={},subs=[];
+ const note=()=>subs.forEach(s=>s());
+ const rows=pre=>Object.keys(C).filter(k=>k.startsWith(pre)).map(k=>({id:k.slice(pre.length),data:()=>C[k]}));
+ sb.channel('r'+room).on('postgres_changes',{event:'*',schema:'public',table:'game_rows',filter:'room=eq.'+room},e=>{
+  if(e.eventType=='DELETE')delete C[e.old.path];else C[e.new.path]=e.new.data;note()})
+ .subscribe(async st=>{if(st=='SUBSCRIBED'){const{data}=await sb.from('game_rows').select('path,data').eq('room',room);
+  Object.keys(C).forEach(k=>delete C[k]);(data||[]).forEach(r=>C[r.path]=r.data);note()}});
+ return{doc:path=>({
+  set:async d=>{C[path]=d;note();await sb.from('game_rows').upsert({room,path,data:d})},
+  update:async d=>{C[path]={...(C[path]||{}),...d};note();await sb.rpc('merge_row',{p_room:room,p_path:path,p_patch:d})},
+  delete:async()=>{delete C[path];note();await sb.from('game_rows').delete().eq('room',room).eq('path',path)},
+  onSnapshot(cb){const f=()=>cb({id:path.split('/')[1],exists:path in C,data:()=>C[path]});subs.push(f);f();return()=>{}}}),
+ collection:name=>({onSnapshot(cb){const f=()=>cb({docs:rows(name+'/')});subs.push(f);f();return()=>{}}})}}
+const qr=()=>{const u=location.origin+location.pathname+'?room='+room+'&role=player';return `<div class="card"><div class="row"><img width="110" height="110" alt="QR" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(u)}"><div class="mut">สแกนเพื่อเข้าห้อง <b>${room}</b><br>${esc(u)}</div></div></div>`};
+function newRoom(){const c=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[rnd(24)]).join('');location.search='?room='+c+'&role=host'}
+function goRoom(){const c=document.getElementById('rc').value.trim().toUpperCase();if(c)location.search='?room='+c+'&role=player'}
+const $=document.getElementById('app');
+const f=n=>Number(n).toLocaleString('en-US'),rnd=n=>Math.floor(Math.random()*n);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let db,uid,role=Q.get('role'),P={},G={phase:'lobby'},busy=false,choice=null,arm=false;
+const ids=()=>Object.keys(P).sort((a,b)=>P[a].n-P[b].n);
+const col=id=>COL[ids().indexOf(id)%10];
+const lv=p=>{const h=p.ins.includes('hl');return p.cash<2000?3:(p.cash<6000&&!h)?2:(p.cash<5000||!h)?1:0};
+const score=p=>p.cash+1000*p.ins.length;
+const rank=()=>ids().sort((a,b)=>(P[b].st=='ok')-(P[a].st=='ok')||score(P[b])-score(P[a]));
+const chips=p=>p.ins.map(k=>`<span class="chip">🛡️${INS[k]}</span>`).join('')||'<span class="chip">ไม่มีประกัน</span>';
+const ST={ok:'',dead:'💀 เสียชีวิต',broke:'💸 ล้มละลาย'};
+const isTurn=()=>G.phase=='play'&&G.order&&G.order[G.turn]==uid;
+const pick=p=>({pos:p.pos,cash:p.cash,ins:p.ins,st:p.st,skip:p.skip});
+
+function eff(p,t){let m='',v;
+ if(t=='luck'){v=1000*(1+rnd(3));p.cash+=v;m='+'+f(v)}
+ else if(t=='bad'){v=1000*(1+rnd(3));p.cash-=v;m='-'+f(v)}
+ else if(t=='skip'){p.skip=1;m='พัก 1 ตา'}
+ else if(t=='back'){p.pos=(p.pos+25)%28;m='ถอยหลัง 3 ช่อง'}
+ else if(t=='accident'){v=p.ins.includes('acc')?500:4000;p.cash-=v;m='ค่ารักษา -'+f(v)+(v<1000?' (ประกันช่วย)':'')}
+ else if(t=='illness'){v=p.ins.includes('hl')?1000:6000;
+  if(p.cash<v){if(p.ins.includes('life')){p.ins=p.ins.filter(x=>x!='life');p.cash=3000;return 'เสียชีวิต! แต่ประกันชีวิตช่วยให้กลับมา'}
+   p.st='dead';return 'ไม่มีเงินค่ารักษา เสียชีวิต 💀'}
+  p.cash-=v;m='ค่ารักษา -'+f(v)+(v<2000?' (ประกันช่วย)':'')}
+ if(p.cash<0&&p.st=='ok'){p.st='broke';m+=' ล้มละลาย 💸'}
+ return m}
+
+async function fin(patch,msg){busy=true;render();
+ P[uid]={...P[uid],...patch};
+ await db.doc('players/'+uid).update(patch);
+ const o=G.order;let t=G.turn,r=G.round,phase='play';
+ const alive=o.filter(i=>P[i]&&P[i].st=='ok');
+ do{t++;if(t>=o.length){t=0;r++}}while(alive.length&&!(P[o[t]]&&P[o[t]].st=='ok'));
+ if(!alive.length||r>G.max||(G.n0>3&&alive.length<=3))phase='end';
+ await db.doc('game/main').update({turn:t,round:r,phase,log:[msg,...(G.log||[])].slice(0,8)});
+ choice=null;busy=false;render()}
+
+async function roll(){if(busy)return;busy=true;render();
+ const p={...P[uid],ins:[...P[uid].ins]},d=1+rnd(6);
+ let m=p.name+' ทอยได้ '+d;
+ if(p.pos+d>=28){p.cash+=2000;m+=' ผ่านจุดเริ่ม +2,000'}
+ p.pos=(p.pos+d)%28;const t=T[p.pos];m+=' → '+M[t][1]+' ';
+ if(t=='invest'||t=='insure'){P[uid]=p;await db.doc('players/'+uid).update({pos:p.pos,cash:p.cash});choice={t,m};busy=false;render();return}
+ m+=eff(p,t);await fin(pick(p),m)}
+async function skipT(){const p=P[uid];await fin({skip:p.skip-1},p.name+' พักตานี้')}
+async function inv(k){const p={...P[uid],ins:[...P[uid].ins]};let m=p.name+' ผ่านช่องลงทุน';
+ if(k!='no'){const hi=k=='hi',win=Math.random()<(hi?.45:.7),v=hi?(win?3000:-3000):(win?750:-300);p.cash+=v;
+  m=p.name+' ลงทุน'+(hi?'เสี่ยงสูง ':'เสี่ยงต่ำ ')+(v>0?'กำไร +':'ขาดทุน ')+f(v);
+  if(p.cash<0){p.st='broke';m+=' ล้มละลาย 💸'}}
+ await fin(pick(p),m)}
+async function buy(k){const p={...P[uid],ins:[...P[uid].ins]};let m=p.name+' ไม่ซื้อประกัน';
+ if(k!='no'){p.cash-=PR[k];p.ins.push(k);m=p.name+' ซื้อประกัน'+INS[k]}
+ await fin(pick(p),m)}
+async function haunt(){const p=P[uid],al=ids().filter(i=>P[i].st=='ok');if(!al.length||p.ghost<1)return;
+ const t=al[rnd(al.length)],q=P[t],c=q.cash-1000,u={cash:c};if(c<0)u.st='broke';
+ await db.doc('players/'+t).update(u);await db.doc('players/'+uid).update({ghost:p.ghost-1});
+ await db.doc('game/main').update({log:[`👻 ${p.name} ปล่อยข่าวร้ายใส่ ${q.name} -1,000`,...(G.log||[])].slice(0,8)})}
+async function join(){const n=document.getElementById('nm').value.trim().slice(0,12);if(!n)return;
+ await db.doc('players/'+uid).set({name:n,pos:0,cash:10000,ins:[],st:'ok',skip:0,ghost:3,n:Date.now()})}
+async function start(){const o=ids().filter(i=>P[i].st=='ok').sort(()=>Math.random()-.5);if(o.length<2)return;
+ await db.doc('game/main').set({phase:'play',order:o,turn:0,round:1,max:20,n0:o.length,log:['เริ่มเกม!']})}
+async function reset(){if(!arm){arm=true;render();return}arm=false;
+ for(const i of ids())await db.doc('players/'+i).delete();await db.doc('game/main').set({phase:'lobby'})}
+function setRole(r){role=r;render()}
+
+const podium=()=>`<div class="card"><h2>🏆 จบเกม</h2>${rank().slice(0,3).map((id,i)=>`<div class="big">${'🥇🥈🥉'.slice(i*2,i*2+2)} ${esc(P[id].name)} <span class="mut">฿${f(score(P[id]))}</span></div>`).join('')}</div>`;
+const logs=n=>(G.log||[]).slice(0,n).map(l=>`<div class="mut">• ${esc(l)}</div>`).join('');
+
+function host(){
+ const cells=T.map((t,i)=>{const[r,c]=POS[i];const pw=ids().filter(id=>P[id].pos==i&&P[id].st=='ok').map(id=>`<span style="background:${col(id)}">${esc(P[id].name[0])}</span>`).join('');
+  return `<div class="t ${t}" style="grid-row:${r+1};grid-column:${c+1}"><i>${M[t][0]}</i>${M[t][1]}<div class="pw">${pw}</div></div>`}).join('');
+ const cur=G.phase=='play'?P[G.order[G.turn]]:null;
+ const mid=`<div class="mid card"><h2>ตาที่ ${G.round||0}/${G.max||20}</h2>${cur?`<div class="big">▶ ${esc(cur.name)}</div>`:`<div class="mut">${G.phase=='end'?'จบเกม':'รอผู้เล่น…'}</div>`}${logs(5)}</div>`;
+ const list=ids().map(id=>{const p=P[id],o=p.st!='ok';
+  return `<div class="card ${o?'out':'lv'+lv(p)}"><div class="row"><b style="color:${col(id)}">● ${esc(p.name)} ${cur&&G.order[G.turn]==id?'▶':''}</b><span>฿${f(p.cash)}</span></div><div>${o?ST[p.st]+' (ผี 👻)':chips(p)}</div></div>`}).join('');
+ return `<div class="row"><div><h1>🎲 เกมวางแผนชีวิต</h1><div class="mut">ห้อง <b>${room}</b></div></div><div>${G.phase!='play'&&G.phase!='end'?`<button onclick="start()" ${ids().length<2?'disabled':''}>เริ่มเกม (${ids().length} คน)</button>`:''}<button class="g" onclick="reset()">${arm?'กดอีกครั้งเพื่อยืนยัน':'รีเซ็ต'}</button></div></div>
+ ${G.phase=='end'?podium():''}
+ <div class="wrap"><div class="board">${cells}${mid}</div><div>${G.phase=='lobby'?qr():''}${list}<div class="mut">🟢 ปลอดภัย 🟡 เฝ้าระวัง 🟠 อันตราย 🔴 วิกฤต</div></div></div>`}
+
+function play(){const p=P[uid];
+ if(!p)return `<h2>เข้าร่วมเกม</h2>${G.phase=='lobby'?`<input id="nm" placeholder="ชื่อของคุณ" maxlength="12"><button onclick="join()">เข้าห้อง</button>`:'<div class="card">เกมเริ่มไปแล้ว รอรอบหน้านะ</div>'}`;
+ const out=p.st!='ok',tl=T[p.pos];
+ let act='';
+ if(G.phase=='end')act=podium();
+ else if(out)act=`<div class="card"><h3>${ST[p.st]}</h3><div class="mut">คุณเป็นผีแล้ว ป่วนผู้เล่นที่ยังอยู่ได้ ${p.ghost} ครั้ง</div><button onclick="haunt()" ${p.ghost<1||busy?'disabled':''}>👻 ปล่อยข่าวร้าย (-1,000)</button></div>`;
+ else if(G.phase=='lobby')act='<div class="card">รอผู้ควบคุมเริ่มเกม…</div>';
+ else if(isTurn()){
+  if(choice&&choice.t=='invest')act=`<div class="card"><h3>📈 ช่องลงทุน (3,000)</h3><div class="mut">ต่ำ: 70% +750 / 30% -300 · สูง: 45% +3,000 / 55% -3,000</div><button onclick="inv('lo')" ${p.cash<3000?'disabled':''}>เสี่ยงต่ำ</button><button onclick="inv('hi')" ${p.cash<3000?'disabled':''}>เสี่ยงสูง</button><button class="g" onclick="inv('no')">ข้าม</button></div>`;
+  else if(choice)act=`<div class="card"><h3>🛡️ ซื้อประกัน</h3>${Object.keys(PR).filter(k=>!p.ins.includes(k)).map(k=>`<button onclick="buy('${k}')" ${p.cash<PR[k]?'disabled':''}>${INS[k]} ฿${f(PR[k])}</button>`).join('')}<button class="g" onclick="buy('no')">ไม่ซื้อ</button></div>`;
+  else if(p.skip>0)act=`<div class="card"><h3>⏸️ ติดพัก</h3><button onclick="skipT()" ${busy?'disabled':''}>ข้ามตานี้</button></div>`;
+  else act=`<div class="card"><h2>ตาของคุณ!</h2><button style="font-size:1.4rem;width:100%;padding:20px" onclick="roll()" ${busy?'disabled':''}>🎲 ทอยลูกเต๋า</button></div>`}
+ else act=`<div class="card mut">รอ ${esc((P[G.order[G.turn]]||{}).name||'')} เล่น…</div>`;
+ return `<div class="card ${out?'out':'lv'+lv(p)}"><div class="row"><h2>${esc(p.name)}</h2><span class="mut">ช่อง ${M[tl][0]} ${M[tl][1]}</span></div><div class="big">฿${f(p.cash)}</div>${out?ST[p.st]:chips(p)}</div>${act}<div>${logs(3)}</div>`}
+
+function render(){if(document.activeElement&&document.activeElement.tagName=='INPUT')return;
+ if(!room){$.innerHTML='<h1>🎲 เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="newRoom()">🖥️ สร้างห้อง (ผู้ควบคุม)</button><div class="card"><input id="rc" placeholder="รหัสห้อง 4 ตัวอักษร" maxlength="6"><button onclick="goRoom()">📱 เข้าห้อง (ผู้เล่น)</button></div>';return}
+ if(!db){$.innerHTML='<div class="card">กำลังเชื่อมต่อ…</div>';return}
+ $.innerHTML=role==null?`<h1>🎲 เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="setRole('player')">📱 ผู้เล่น (มือถือ)</button><button class="g" style="width:100%;padding:24px" onclick="setRole('host')">🖥️ ผู้ควบคุม (คอม)</button>`:role=='host'?host():play()}
+
+(function(){if(!room){render();return}
+ try{uid=localStorage.getItem('uid')}catch(e){}
+ if(!uid){uid=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2));try{localStorage.setItem('uid',uid)}catch(e){}}
+ db=mkDb(room);
+ db.collection('players').onSnapshot(s=>{P={};s.docs.forEach(d=>P[d.id]=d.data());render()});
+ db.doc('game/main').onSnapshot(s=>{G=s.exists?s.data():{phase:'lobby'};render()});
+ render()})();
+</script></body></html>
