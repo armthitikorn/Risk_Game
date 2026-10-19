@@ -54,7 +54,7 @@ input{font:inherit;padding:12px 14px;border-radius:10px;border:1px solid var(--b
 .b3p{aspect-ratio:5/4}.b3p .hud{max-width:64%}.hud .lg{font-size:.9em}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head>
-<body><div id="err" style="display:none;background:#d62f2f;color:#fff;padding:8px 12px;font-size:.9rem"></div><div id="app">กำลังเชื่อมต่อ…</div>
+<body><button id="snd" class="g" onclick="togSnd()" style="position:fixed;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:20;padding:8px 12px;background:var(--card)">🔊</button><div id="err" style="display:none;background:#d62f2f;color:#fff;padding:8px 12px;font-size:.9rem"></div><div id="app">กำลังเชื่อมต่อ…</div>
 <script>
 const T=['start','luck','invest','bad','insure','illness','skip','luck','accident','invest','back','luck','insure','bad','illness','invest','luck','skip','accident','insure','back','luck','bad','invest','illness','insure','accident','luck'];
 const M={start:['🏁','เริ่ม'],luck:['🍀','โชคดี'],bad:['⚡','โชคร้าย'],skip:['⏸️','พัก'],back:['↩️','ถอย'],invest:['📈','ลงทุน'],insure:['🛡️','ประกัน'],accident:['🚑','อุบัติเหตุ'],illness:['🏥','เจ็บป่วย']};
@@ -69,18 +69,18 @@ const POS=T.map((_,i)=>i<8?[0,i]:i<14?[i-7,7]:i<22?[7,7-(i-14)]:[7-(i-21),0]);
 const SB_URL='https://wzwyotzzxycqfwercakh.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno';
 const Q=new URLSearchParams(location.search);const room=(Q.get('room')||'').toUpperCase();
 function mkDb(room){const sb=supabase.createClient(SB_URL,SB_KEY),C={},subs=[];
- const note=()=>subs.forEach(s=>s());let lw=0,sig='';
+ const note=()=>subs.forEach(s=>s());let lw=0,sig='',loaded=0;
  const chk=r=>{if(r&&r.error)showErr('บันทึกไม่ได้: '+r.error.message)};
  const pull=async()=>{if(Date.now()-lw<1500)return;const{data,error}=await sb.from('game_rows').select('path,data').eq('room',room).order('path');
   if(error){showErr('อ่านข้อมูลไม่ได้: '+error.message);return}
-  const g=JSON.stringify(data||[]);if(g==sig)return;sig=g;
+  loaded=1;const g=JSON.stringify(data||[]);if(g==sig)return;sig=g;
   Object.keys(C).forEach(k=>delete C[k]);(data||[]).forEach(r=>C[r.path]=r.data);note()};
  let live=0,tk=0;setInterval(()=>{if(!live||++tk%8==0)pull()},2000);
  const rows=pre=>Object.keys(C).filter(k=>k.startsWith(pre)).map(k=>({id:k.slice(pre.length),data:()=>C[k]}));
  sb.channel('r'+room).on('postgres_changes',{event:'*',schema:'public',table:'game_rows',filter:'room=eq.'+room},e=>{
   if(e.eventType=='DELETE')delete C[e.old.path];else C[e.new.path]=e.new.data;note()})
  .subscribe(st=>{live=st=='SUBSCRIBED';if(live)pull()});pull();
- return{doc:path=>({
+ return{ready:()=>loaded,doc:path=>({
   set:async d=>{C[path]=d;note();lw=Date.now();chk(await sb.from('game_rows').upsert({room,path,data:d}))},
   update:async d=>{C[path]={...(C[path]||{}),...d};note();lw=Date.now();chk(await sb.rpc('merge_row',{p_room:room,p_path:path,p_patch:d}))},
   delete:async()=>{delete C[path];note();lw=Date.now();chk(await sb.from('game_rows').delete().eq('room',room).eq('path',path))},
@@ -167,6 +167,34 @@ const hl=t=>{let h=esc(t);const I=ids();I.forEach((id,i)=>{const n=esc(P[id].nam
  return h.replace(/\u0001(\d+)\u0002/g,(_,i)=>`<b style="color:${col(I[i])}">${esc(P[I[i]].name)}</b>`)};
 const logs=n=>(G.log||[]).slice(0,n).map(l=>`<div class="lg">• ${hl(l)}</div>`).join('');
 
+let AC=null,SND=true;try{SND=localStorage.getItem('snd')!='0'}catch(e){}
+function au(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state=='suspended')AC.resume();return AC}
+function tone(f,t0,d,ty,v,f2){const a=au();if(!a||!SND)return;const o=a.createOscillator(),g=a.createGain(),t=a.currentTime+t0;o.type=ty||'sine';o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+d);
+ g.gain.setValueAtTime(v||.12,t);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+d+.02)}
+function noise(t0,d,v,fc){const a=au();if(!a||!SND)return;const n=Math.floor(a.sampleRate*d),b=a.createBuffer(1,n,a.sampleRate),x=b.getChannelData(0);
+ for(let i=0;i<n;i++)x[i]=(Math.random()*2-1)*(1-i/n);const s=a.createBufferSource();s.buffer=b;const f=a.createBiquadFilter();f.type='bandpass';f.frequency.value=fc;
+ const g=a.createGain();g.gain.value=v;s.connect(f);f.connect(g);g.connect(a.destination);s.start(a.currentTime+t0)}
+const SFX={dice:()=>{for(let i=0;i<9;i++)noise(i*.1,.07,.25,1500+rnd(1800))},step:()=>tone(520,0,.1,'triangle',.1,720),
+ coin:()=>{tone(988,0,.1,'square',.07);tone(1319,.09,.28,'square',.07)},bad:()=>tone(240,0,.4,'sawtooth',.1,100),
+ siren:()=>{for(let i=0;i<3;i++){tone(820,i*.34,.16,'square',.06);tone(620,i*.34+.17,.16,'square',.06)}},
+ sad:()=>[392,330,262,196].forEach((f,i)=>tone(f,i*.28,.4,'triangle',.13)),
+ buy:()=>{tone(660,0,.12,'sine',.12);tone(880,.1,.12,'sine',.12);tone(1320,.2,.32,'sine',.12)},
+ win:()=>[523,659,784,1047,784,1047,1319].forEach((f,i)=>tone(f,i*.14,.32,'square',.07)),
+ start:()=>[392,523,659].forEach((f,i)=>tone(f,i*.12,.22,'triangle',.12)),
+ skip:()=>tone(320,0,.3,'sine',.12,170),back:()=>tone(700,0,.35,'sawtooth',.07,200),
+ ghost:()=>{tone(180,0,.7,'sine',.12,90);tone(187,.05,.7,'sine',.1,95)},
+ cash:()=>{noise(0,.06,.15,5000);tone(1200,.05,.22,'square',.06)}};
+const sfx=k=>{if(SND&&SFX[k])SFX[k]()};
+function sfxLog(m){if(m.includes('เริ่มเกม!')){sfx('start');return}
+ if(!(role=='host'||(P[uid]&&m.includes(P[uid].name))))return;
+ const r=/ทอยได้ (\d)/.exec(m);let dl=0;if(r){sfx('dice');dl=1500+(+r[1])*420}
+ const at=k=>setTimeout(()=>sfx(k),dl);
+ if(m.includes('👻'))at('ghost');else if(m.includes('เสียชีวิต')||m.includes('ล้มละลาย'))at('sad');
+ else if(m.includes('ค่ารักษา'))at('siren');else if(m.includes('โชคร้าย')||m.includes('ขาดทุน'))at('bad');
+ else if(m.includes('ซื้อประกัน'))at('buy');else if(m.includes('โบนัส')||m.includes('โชคดี')||m.includes('กำไร'))at('coin');
+ else if(m.includes('กู้'))at('cash');else if(m.includes('พัก'))at('skip');else if(m.includes('ถอยหลัง'))at('back')}
+function togSnd(){SND=!SND;try{localStorage.setItem('snd',SND?'1':'0')}catch(e){}document.getElementById('snd').textContent=SND?'🔊':'🔇';if(SND){au();sfx('coin')}}
+window.addEventListener('pointerdown',()=>au(),{once:true});
 const IP={start:'M5 21V4M5 4h11l-2 4 2 4H5',luck:'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.5l-5.4 3 1.2-6L3.3 9.3l6.1-.7z',bad:'M13 2L4 14h7l-1 8 9-12h-7z',skip:'M8 5v14M16 5v14',back:'M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3',invest:'M3 17l6-6 4 4 8-8M15 7h6v6',insure:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',accident:'M12 3l10 18H2zM12 10v5M12 18v.01',illness:'M9 4h6v5h5v6h-5v5H9v-5H4V9h5z'};
 const IC=Object.fromEntries(Object.entries(IP).map(([k,d])=>[k,`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`]));
 const AV=['🐱','🐶','🐰','🦊','🐼','🐯','🐸','🐵','🦄','🐧'];
@@ -175,7 +203,7 @@ let disp={},stp={};
 function sync(){ids().forEach(id=>{const p=P[id];if(disp[id]==null){disp[id]=p.pos;return}if(disp[id]!=p.pos&&!stp[id]){stp[id]=1;setTimeout(()=>step(id),1400)}})}
 function step(id){const p=P[id];if(!p){stp[id]=0;return}const c=disp[id],t=p.pos;
  if(c==t){stp[id]=0;render();return}
- const fw=(t-c+28)%28;disp[id]=fw<=6?(c+1)%28:(c+27)%28;render();setTimeout(()=>step(id),420)}
+ const fw=(t-c+28)%28;disp[id]=fw<=6?(c+1)%28:(c+27)%28;if(role=='host'||id==uid)sfx('step');render();setTimeout(()=>step(id),420)}
 function cellsHtml(){return T.map((t,i)=>{const[r,c]=POS[i];
  const pw=part().filter(id=>disp[id]==i&&P[id].st=='ok').map(id=>`<span class="${id==uid?'me':''} ${stp[id]?'mv':''}" style="background:${col(id)}">${av(id)}</span>`).join('');
  return `<div class="t ${t}" style="grid-row:${r+1};grid-column:${c+1}">${IC[t]}<span>${M[t][1]}</span><div class="pw">${pw}</div></div>`}).join('')}
@@ -280,7 +308,7 @@ function host(){
   return `<div class="card ${o?'out':'lv'+lv(p)}"><div class="row"><b style="color:${col(id)}">● ${esc(p.name)} ${cur&&G.order[G.turn]==id?'▶':''}</b><span>฿${f(p.cash)}</span></div><div>${o?ST[p.st]+' (ผี 👻)':chips(p)}</div></div>`}).join('');
  return `<div class="row"><div><h1>เกมวางแผนชีวิต</h1><div class="mut">ห้อง <b>${room}</b></div></div><div>${G.phase!='play'&&G.phase!='end'?`<button onclick="start()" ${ids().length<2?'disabled':''}>เริ่มเกม (${ids().length} คน)</button>`:''}<button class="g" onclick="reset()">${arm?'กดอีกครั้งเพื่อยืนยัน':'รีเซ็ต'}</button></div></div>
  ${G.phase=='end'?podium():''}
- <div class="wrap">${typeof THREE!='undefined'?`<div class="b3" id="b3slot"><div class="hud">${mid}</div></div>`:`<div class="board">${cells}${mid}</div>`}<div>${G.phase=='lobby'?qr():''}${list}<div class="mut">🟢 ปลอดภัย 🟡 เฝ้าระวัง 🟠 อันตราย 🔴 วิกฤต</div></div></div>`}
+ <div class="wrap">${typeof THREE!='undefined'?`<div class="b3" id="b3slot"></div>`:`<div class="board">${cells}${mid}</div>`}<div>${typeof THREE!='undefined'?mid:''}${G.phase=='lobby'?qr():''}${list}<div class="mut">🟢 ปลอดภัย 🟡 เฝ้าระวัง 🟠 อันตราย 🔴 วิกฤต</div></div></div>`}
 
 function play(){const p=P[uid];
  if(p&&G.phase!='lobby'&&G.order&&!G.order.includes(uid))return '<div class="card"><h3>เกมเริ่มไปแล้ว</h3><div class="mut">คุณเข้าห้องไม่ทัน รอเล่นรอบหน้านะ</div></div>';
@@ -296,7 +324,7 @@ function play(){const p=P[uid];
   else if(p.skip>0)act=`<div class="card"><h3>⏸️ ติดพัก</h3><button onclick="skipT()" ${busy?'disabled':''}>ข้ามตานี้</button></div>`;
   else act=`<div class="card"><h2>ตาของคุณ!</h2><button style="font-size:1.4rem;width:100%;padding:20px" onclick="roll()" ${busy?'disabled':''}>${busy?'🎲 กำลังทอย…':'🎲 ทอยลูกเต๋า'}</button>${p.cash<3000&&!(p.debt>0)?`<button class="g" style="width:100%" onclick="loan()" ${busy?'disabled':''}>🏦 กู้สถาบันการเงิน รับ 8,000 (คืน 10,000)</button><div class="mut">เงินใกล้หมดกู้ได้ 1 ครั้ง หักคืนจากโบนัสผ่านรอบ</div>`:''}</div>`}
  else act=`<div class="card mut">รอ <b style="color:${col(G.order[G.turn])}">${esc((P[G.order[G.turn]]||{}).name||'')}</b> เล่น…</div>`;
- return `${typeof THREE!='undefined'?`<div class="b3 b3p" id="b3slot"><div class="hud">${mini()}</div></div>`:`<div class="board">${cellsHtml()}${mini()}</div>`}<div class="card ${out?'out':'lv'+lv(p)}"><div class="row"><h2 style="color:${col(uid)}">${esc(p.name)}</h2><span class="mut">ช่อง ${M[tl][0]} ${M[tl][1]} · รอบ ${p.lap||0}</span></div><div class="big">฿${f(p.cash)}</div>${out?ST[p.st]:chips(p)}</div>${act}<div>${logs(3)}</div>`}
+ return `${typeof THREE!='undefined'?`<div class="b3 b3p" id="b3slot"></div><div class="card" style="padding:6px 4px">${mini()}</div>`:`<div class="board">${cellsHtml()}${mini()}</div>`}<div class="card ${out?'out':'lv'+lv(p)}"><div class="row"><h2 style="color:${col(uid)}">${esc(p.name)}</h2><span class="mut">ช่อง ${M[tl][0]} ${M[tl][1]} · รอบ ${p.lap||0}</span></div><div class="big">฿${f(p.cash)}</div>${out?ST[p.st]:chips(p)}</div>${act}<div>${logs(3)}</div>`}
 
 function render(){if(P)sync();if(document.activeElement&&document.activeElement.tagName=='INPUT')return;
  if(!room){$.innerHTML='<h1>เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="newRoom()">🖥️ สร้างห้อง (ผู้ควบคุม)</button><div class="card"><input id="rc" placeholder="รหัสห้อง 4 ตัวอักษร" maxlength="6"><button onclick="goRoom()">📱 เข้าห้อง (ผู้เล่น)</button></div><button class="g" style="width:100%" onclick="location.search=&quot;?admin=1&quot;">📊 ผู้ดูแลทุกห้อง</button>';return}
@@ -308,6 +336,9 @@ function render(){if(P)sync();if(document.activeElement&&document.activeElement.
  if(!uid){uid=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2));try{localStorage.setItem('uid',uid)}catch(e){}}
  db=mkDb(room);
  db.collection('players').onSnapshot(s=>{P={};s.docs.forEach(d=>P[d.id]=d.data());render()});
- db.doc('game/main').onSnapshot(s=>{G=s.exists?s.data():{phase:'lobby'};render()});
+ let sg0,wasEnd=0;db.doc('game/main').onSnapshot(s=>{const n=s.exists?s.data():{phase:'lobby'};G=n;
+  if(db.ready()){const sg=(n.log||[]).join('|');if(sg0===undefined){sg0=sg;wasEnd=n.phase=='end'}
+   else{if(sg!==sg0){sg0=sg;if(n.log&&n.log[0])sfxLog(n.log[0])}if(n.phase=='end'&&!wasEnd)sfx('win');wasEnd=n.phase=='end'}}
+  render()});
  render()})();
 </script></body></html>
