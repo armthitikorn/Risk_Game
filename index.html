@@ -30,8 +30,11 @@ input{font:inherit;padding:12px;border-radius:12px;border:1px solid var(--bd);ba
 .t{border-radius:8px;background:var(--card);border:1px solid var(--bd);font-size:clamp(.5rem,1.4vw,.75rem);text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;position:relative;min-width:0}
 .t i{font-style:normal;font-size:clamp(.9rem,2.4vw,1.4rem)}
 .t.luck{background:#2e9e5b22}.t.bad,.t.accident,.t.illness{background:#d62f2f1f}.t.skip,.t.back{background:#ef7d0022}.t.invest{background:#2f6fed22}.t.insure{background:#8e44ad22}.t.start{background:#e0b40033}
-.pw{display:flex;flex-wrap:wrap;justify-content:center;gap:1px}
-.pw span{width:1.5em;height:1.5em;border-radius:50%;color:#fff;font-size:.8em;display:grid;place-items:center;font-weight:700}
+.pw{position:absolute;inset:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;pointer-events:none}
+.pw span{width:1.7em;height:1.7em;margin:-2px;border-radius:50%;background:var(--card);border:2.5px solid;font-size:clamp(.8rem,3vw,1.3rem);display:grid;place-items:center;line-height:1}
+.pw span.me{box-shadow:0 0 0 3px #ffd60a}
+.pw span.mv{animation:hop .26s}
+@keyframes hop{0%{transform:translateY(0)}40%{transform:translateY(-40%) scale(1.2)}100%{transform:translateY(0)}}
 .mid{grid-area:2/2/8/8;display:flex;flex-direction:column;justify-content:center;padding:8px;font-size:clamp(.6rem,1.6vw,.95rem);overflow:hidden}
 .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
 </style></head>
@@ -134,9 +137,19 @@ function setRole(r){role=r;render()}
 const podium=()=>`<div class="card"><h2>🏆 จบเกม</h2>${rank().slice(0,3).map((id,i)=>`<div class="big">${'🥇🥈🥉'.slice(i*2,i*2+2)} ${esc(P[id].name)} <span class="mut">฿${f(score(P[id]))}</span></div>`).join('')}</div>`;
 const logs=n=>(G.log||[]).slice(0,n).map(l=>`<div class="mut">• ${esc(l)}</div>`).join('');
 
+const AV=['🐱','🐶','🐰','🦊','🐼','🐯','🐸','🐵','🦄','🐧'];
+const av=id=>AV[ids().indexOf(id)%10];
+let disp={},stp={};
+function sync(){ids().forEach(id=>{const p=P[id];if(disp[id]==null){disp[id]=p.pos;return}if(disp[id]!=p.pos&&!stp[id]){stp[id]=1;step(id)}})}
+function step(id){const p=P[id];if(!p){stp[id]=0;return}const c=disp[id],t=p.pos;
+ if(c==t){stp[id]=0;render();return}
+ const fw=(t-c+28)%28;disp[id]=fw<=6?(c+1)%28:(c+27)%28;render();setTimeout(()=>step(id),260)}
+function cellsHtml(){return T.map((t,i)=>{const[r,c]=POS[i];
+ const pw=ids().filter(id=>disp[id]==i&&P[id].st=='ok').map(id=>`<span class="${id==uid?'me':''} ${stp[id]?'mv':''}" style="border-color:${col(id)}">${av(id)}</span>`).join('');
+ return `<div class="t ${t}" style="grid-row:${r+1};grid-column:${c+1}"><i>${M[t][0]}</i>${M[t][1]}<div class="pw">${pw}</div></div>`}).join('')}
+const mini=()=>{const cur=G.phase=='play'&&G.order?P[G.order[G.turn]]:null;return `<div class="mid">${cur?`<b>▶ ${esc(cur.name)} ${av(G.order[G.turn])}</b>`:''}${logs(2)}</div>`};
 function host(){
- const cells=T.map((t,i)=>{const[r,c]=POS[i];const pw=ids().filter(id=>P[id].pos==i&&P[id].st=='ok').map(id=>`<span style="background:${col(id)}">${esc(P[id].name[0])}</span>`).join('');
-  return `<div class="t ${t}" style="grid-row:${r+1};grid-column:${c+1}"><i>${M[t][0]}</i>${M[t][1]}<div class="pw">${pw}</div></div>`}).join('');
+ const cells=cellsHtml();
  const cur=G.phase=='play'?P[G.order[G.turn]]:null;
  const mid=`<div class="mid card"><h2>ตาที่ ${G.round||0}/${G.max||20}</h2>${cur?`<div class="big">▶ ${esc(cur.name)}</div>`:`<div class="mut">${G.phase=='end'?'จบเกม':'รอผู้เล่น…'}</div>`}${logs(5)}</div>`;
  const list=ids().map(id=>{const p=P[id],o=p.st!='ok';
@@ -156,11 +169,11 @@ function play(){const p=P[uid];
   if(choice&&choice.t=='invest')act=`<div class="card"><h3>📈 ช่องลงทุน (3,000)</h3><div class="mut">ต่ำ: 70% +750 / 30% -300 · สูง: 45% +3,000 / 55% -3,000</div><button onclick="inv('lo')" ${p.cash<3000?'disabled':''}>เสี่ยงต่ำ</button><button onclick="inv('hi')" ${p.cash<3000?'disabled':''}>เสี่ยงสูง</button><button class="g" onclick="inv('no')">ข้าม</button></div>`;
   else if(choice)act=`<div class="card"><h3>🛡️ ซื้อประกัน</h3>${Object.keys(PR).filter(k=>!p.ins.includes(k)).map(k=>`<button onclick="buy('${k}')" ${p.cash<PR[k]?'disabled':''}>${INS[k]} ฿${f(PR[k])}</button>`).join('')}<button class="g" onclick="buy('no')">ไม่ซื้อ</button></div>`;
   else if(p.skip>0)act=`<div class="card"><h3>⏸️ ติดพัก</h3><button onclick="skipT()" ${busy?'disabled':''}>ข้ามตานี้</button></div>`;
-  else act=`<div class="card"><h2>ตาของคุณ!</h2><button style="font-size:1.4rem;width:100%;padding:20px" onclick="roll()" ${busy?'disabled':''}>🎲 ทอยลูกเต๋า</button></div>`}
+  else act=`<div class="card"><h2>ตาของคุณ!</h2><button style="font-size:1.4rem;width:100%;padding:20px" onclick="roll()" ${busy?'disabled':''}>${busy?'🎲 กำลังทอย…':'🎲 ทอยลูกเต๋า'}</button></div>`}
  else act=`<div class="card mut">รอ ${esc((P[G.order[G.turn]]||{}).name||'')} เล่น…</div>`;
- return `<div class="card ${out?'out':'lv'+lv(p)}"><div class="row"><h2>${esc(p.name)}</h2><span class="mut">ช่อง ${M[tl][0]} ${M[tl][1]}</span></div><div class="big">฿${f(p.cash)}</div>${out?ST[p.st]:chips(p)}</div>${act}<div>${logs(3)}</div>`}
+ return `<div class="board">${cellsHtml()}${mini()}</div><div class="card ${out?'out':'lv'+lv(p)}"><div class="row"><h2>${esc(p.name)}</h2><span class="mut">ช่อง ${M[tl][0]} ${M[tl][1]}</span></div><div class="big">฿${f(p.cash)}</div>${out?ST[p.st]:chips(p)}</div>${act}<div>${logs(3)}</div>`}
 
-function render(){if(document.activeElement&&document.activeElement.tagName=='INPUT')return;
+function render(){if(P)sync();if(document.activeElement&&document.activeElement.tagName=='INPUT')return;
  if(!room){$.innerHTML='<h1>🎲 เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="newRoom()">🖥️ สร้างห้อง (ผู้ควบคุม)</button><div class="card"><input id="rc" placeholder="รหัสห้อง 4 ตัวอักษร" maxlength="6"><button onclick="goRoom()">📱 เข้าห้อง (ผู้เล่น)</button></div>';return}
  if(!db){$.innerHTML='<div class="card">กำลังเชื่อมต่อ…</div>';return}
  $.innerHTML=role==null?`<h1>🎲 เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="setRole('player')">📱 ผู้เล่น (มือถือ)</button><button class="g" style="width:100%;padding:24px" onclick="setRole('host')">🖥️ ผู้ควบคุม (คอม)</button>`:role=='host'?host():play()}
