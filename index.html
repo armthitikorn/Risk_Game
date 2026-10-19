@@ -62,11 +62,11 @@ function mkDb(room){const sb=supabase.createClient(SB_URL,SB_KEY),C={},subs=[];
   if(error){showErr('อ่านข้อมูลไม่ได้: '+error.message);return}
   const g=JSON.stringify(data||[]);if(g==sig)return;sig=g;
   Object.keys(C).forEach(k=>delete C[k]);(data||[]).forEach(r=>C[r.path]=r.data);note()};
- setInterval(pull,2000);
+ let live=0,tk=0;setInterval(()=>{if(!live||++tk%8==0)pull()},2000);
  const rows=pre=>Object.keys(C).filter(k=>k.startsWith(pre)).map(k=>({id:k.slice(pre.length),data:()=>C[k]}));
  sb.channel('r'+room).on('postgres_changes',{event:'*',schema:'public',table:'game_rows',filter:'room=eq.'+room},e=>{
   if(e.eventType=='DELETE')delete C[e.old.path];else C[e.new.path]=e.new.data;note()})
- .subscribe(st=>{if(st=='SUBSCRIBED')pull()});pull();
+ .subscribe(st=>{live=st=='SUBSCRIBED';if(live)pull()});pull();
  return{doc:path=>({
   set:async d=>{C[path]=d;note();lw=Date.now();chk(await sb.from('game_rows').upsert({room,path,data:d}))},
   update:async d=>{C[path]={...(C[path]||{}),...d};note();lw=Date.now();chk(await sb.rpc('merge_row',{p_room:room,p_path:path,p_patch:d}))},
@@ -160,6 +160,25 @@ function cellsHtml(){return T.map((t,i)=>{const[r,c]=POS[i];
  const pw=part().filter(id=>disp[id]==i&&P[id].st=='ok').map(id=>`<span class="${id==uid?'me':''} ${stp[id]?'mv':''}" style="border-color:${col(id)}">${av(id)}</span>`).join('');
  return `<div class="t ${t}" style="grid-row:${r+1};grid-column:${c+1}"><i>${M[t][0]}</i>${M[t][1]}<div class="pw">${pw}</div></div>`}).join('')}
 const mini=()=>{const cur=G.phase=='play'&&G.order?P[G.order[G.turn]]:null;return `<div class="mid">${cur?`<b style="color:${col(G.order[G.turn])}">▶ ${esc(cur.name)} ${av(G.order[G.turn])}</b>`:''}${G.phase=='play'?mbanner():''}${logs(2)}</div>`};
+let FC='',FN=3,AR={},asb;
+async function adLoad(){const{data,error}=await asb.from('game_rows').select('room,path,data').gte('updated_at',new Date(Date.now()-864e5).toISOString());
+ if(error){showErr(error.message);return}
+ AR={};data.forEach(r=>{const o=AR[r.room]=AR[r.room]||{P:{}};if(r.path=='game/main')o.G=r.data;else o.P[r.path.slice(8)]=r.data});adDraw()}
+async function sendFinal(){const c=FC.toUpperCase().replace(/[^A-Z0-9]/g,''),n=Math.max(1,Math.min(10,+FN||3));if(!c)return;
+ for(const k of Object.keys(AR))if(AR[k].G&&AR[k].G.phase=='end')await asb.rpc('merge_row',{p_room:k,p_path:'game/main',p_patch:{final:c,adv:n}});adLoad()}
+function adDraw(){if(document.activeElement&&document.activeElement.tagName=='INPUT')return;
+ const sc=p=>p.cash+1000*p.ins.length,TH={lobby:'รอเริ่ม',play:'กำลังเล่น',end:'จบแล้ว'};
+ const rk=r=>{const o=r.G&&r.G.order&&r.G.phase!='lobby'?r.G.order:Object.keys(r.P);return o.filter(i=>r.P[i]).sort((a,b)=>(r.P[b].st=='ok')-(r.P[a].st=='ok')||sc(r.P[b])-sc(r.P[a]))};
+ const ks=Object.keys(AR).filter(k=>AR[k].G||Object.keys(AR[k].P).length).sort();
+ const n=ks.reduce((a,k)=>a+Object.keys(AR[k].P).length,0),e=ks.filter(k=>AR[k].G&&AR[k].G.phase=='end').length;
+ $.innerHTML=`<h1>📊 ผู้ดูแลทุกห้อง</h1><div class="mut">${ks.length} ห้อง · ${n} คน · จบแล้ว ${e} ห้อง</div>
+ <div class="card"><b>🏆 ส่งผู้ชนะเข้ารอบชิง</b><input placeholder="รหัสห้องรอบชิง (ตั้งเอง เช่น FINAL)" value="${esc(FC)}" oninput="FC=this.value"><input type="number" min="1" max="10" value="${FN}" oninput="FN=this.value"><div class="mut">จำนวนผู้ชนะต่อห้อง · ส่งให้เฉพาะห้องที่จบแล้ว</div><button onclick="sendFinal()">ส่งผู้ชนะไปรอบชิง</button></div>
+ <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:8px">${ks.map(k=>{const r=AR[k],g=r.G||{},end=g.phase=='end';
+  return `<div class="card"><div class="row"><b>ห้อง ${esc(k)}</b><span class="mut">${TH[g.phase||'lobby']} · ${Object.keys(r.P).length} คน${g.phase=='play'?' · ตา '+g.round:''}</span></div>${rk(r).slice(0,Math.max(3,g.adv||0)).map((id,i)=>{const p=r.P[id];return `<div class="lg">${i<3?'🥇🥈🥉'.slice(i*2,i*2+2):(i+1)+'.'} ${esc(p.name)} ฿${f(sc(p))} ${p.st!='ok'?ST[p.st]:''} ${end&&i<(g.adv||+FN||3)&&p.st=='ok'?'✅':''}</div>`}).join('')}</div>`}).join('')||'<div class="card mut">ยังไม่มีห้อง</div>'}</div>`}
+function admin(){asb=supabase.createClient(SB_URL,SB_KEY);adLoad();setInterval(adLoad,3000)}
+const finalBtn=()=>{if(!G.final)return'';const i=rank().indexOf(uid);
+ if(i<0||i>=(G.adv||3)||P[uid].st!='ok')return '<div class="card">ขอบคุณที่ร่วมเล่น 🎉</div>';
+ return `<div class="card lv0"><h3>🏆 คุณผ่านเข้ารอบชิง!</h3><button style="width:100%;font-size:1.2rem" onclick="location.search='?room=${G.final}&role=player&name='+encodeURIComponent(P[uid].name)">ไปห้องชิงชนะเลิศ</button></div>`};
 function host(){
  const cells=cellsHtml();
  const cur=G.phase=='play'?P[G.order[G.turn]]:null;
@@ -172,10 +191,10 @@ function host(){
 
 function play(){const p=P[uid];
  if(p&&G.phase!='lobby'&&G.order&&!G.order.includes(uid))return '<div class="card"><h3>เกมเริ่มไปแล้ว</h3><div class="mut">คุณเข้าห้องไม่ทัน รอเล่นรอบหน้านะ</div></div>';
- if(!p)return `<h2>เข้าร่วมเกม</h2>${G.phase=='lobby'?`<input id="nm" placeholder="ชื่อของคุณ" maxlength="12"><button onclick="join()">เข้าห้อง</button>`:'<div class="card">เกมเริ่มไปแล้ว รอรอบหน้านะ</div>'}`;
+ if(!p)return `<h2>เข้าร่วมเกม</h2>${G.phase=='lobby'?`<input id="nm" placeholder="ชื่อของคุณ" maxlength="12" value="${esc(Q.get('name')||'')}"><button onclick="join()">เข้าห้อง</button>`:'<div class="card">เกมเริ่มไปแล้ว รอรอบหน้านะ</div>'}`;
  const out=p.st!='ok',tl=T[p.pos];
  let act='';
- if(G.phase=='end')act=podium();
+ if(G.phase=='end')act=podium()+finalBtn();
  else if(out)act=`<div class="card"><h3>${ST[p.st]}</h3><div class="mut">คุณเป็นผีแล้ว ป่วนผู้เล่นที่ยังอยู่ได้ ${p.ghost} ครั้ง</div><button onclick="haunt()" ${p.ghost<1||busy?'disabled':''}>👻 ปล่อยข่าวร้าย (-1,000)</button></div>`;
  else if(G.phase=='lobby')act='<div class="card">รอผู้ควบคุมเริ่มเกม…</div>';
  else if(isTurn()){
@@ -187,11 +206,11 @@ function play(){const p=P[uid];
  return `<div class="board">${cellsHtml()}${mini()}</div><div class="card ${out?'out':'lv'+lv(p)}"><div class="row"><h2 style="color:${col(uid)}">${esc(p.name)}</h2><span class="mut">ช่อง ${M[tl][0]} ${M[tl][1]} · รอบ ${p.lap||0}</span></div><div class="big">฿${f(p.cash)}</div>${out?ST[p.st]:chips(p)}</div>${act}<div>${logs(3)}</div>`}
 
 function render(){if(P)sync();if(document.activeElement&&document.activeElement.tagName=='INPUT')return;
- if(!room){$.innerHTML='<h1>🎲 เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="newRoom()">🖥️ สร้างห้อง (ผู้ควบคุม)</button><div class="card"><input id="rc" placeholder="รหัสห้อง 4 ตัวอักษร" maxlength="6"><button onclick="goRoom()">📱 เข้าห้อง (ผู้เล่น)</button></div>';return}
+ if(!room){$.innerHTML='<h1>🎲 เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="newRoom()">🖥️ สร้างห้อง (ผู้ควบคุม)</button><div class="card"><input id="rc" placeholder="รหัสห้อง 4 ตัวอักษร" maxlength="6"><button onclick="goRoom()">📱 เข้าห้อง (ผู้เล่น)</button></div><button class="g" style="width:100%" onclick="location.search=&quot;?admin=1&quot;">📊 ผู้ดูแลทุกห้อง</button>';return}
  if(!db){$.innerHTML='<div class="card">กำลังเชื่อมต่อ…</div>';return}
  $.innerHTML=role==null?`<h1>🎲 เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="setRole('player')">📱 ผู้เล่น (มือถือ)</button><button class="g" style="width:100%;padding:24px" onclick="setRole('host')">🖥️ ผู้ควบคุม (คอม)</button>`:role=='host'?host():play()}
 
-(function(){if(!room){render();return}
+(function(){if(Q.get('admin')){admin();return}if(!room){render();return}
  try{uid=localStorage.getItem('uid')}catch(e){}
  if(!uid){uid=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2));try{localStorage.setItem('uid',uid)}catch(e){}}
  db=mkDb(room);
