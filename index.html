@@ -2,6 +2,7 @@
 <html lang="th"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>เกมวางแผนชีวิต</title>
+<script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -46,15 +47,19 @@ input{font:inherit;padding:12px 14px;border-radius:10px;border:1px solid var(--b
 @keyframes hop{0%{transform:translateY(0)}40%{transform:translateY(-40%) scale(1.2)}100%{transform:translateY(0)}}
 .mid{grid-area:2/2/8/8;display:flex;flex-direction:column;justify-content:center;padding:10px 12px;font-size:clamp(.7rem,1.9vw,1.15rem);overflow:hidden}
 .board .mid{border:1px dashed var(--bd);border-radius:14px;background:transparent}
+.b3{position:relative;aspect-ratio:4/3;width:100%;border:1.5px solid var(--bd);border-radius:20px;overflow:hidden;background:linear-gradient(160deg,var(--card),var(--bg))}
+.hud{position:absolute;left:10px;top:10px;z-index:2;max-width:min(48%,340px);pointer-events:none}
+.hud .mid{display:block;grid-area:auto;margin:0;padding:8px 12px;background:color-mix(in srgb,var(--card) 82%,transparent);border:1px solid var(--bd);border-radius:12px;font-size:clamp(.75rem,1.3vw,.95rem)}
+.hud .mid h2{font-size:1rem}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head>
 <body><div id="err" style="display:none;background:#d62f2f;color:#fff;padding:8px 12px;font-size:.9rem"></div><div id="app">กำลังเชื่อมต่อ…</div>
 <script>
 const T=['start','luck','invest','bad','insure','illness','skip','luck','accident','invest','back','luck','insure','bad','illness','invest','luck','skip','accident','insure','back','luck','bad','invest','illness','insure','accident','luck'];
-const M={start:['🏁','เงินเดือน'],luck:['🍀','รายได้พิเศษ'],bad:['⚡','รายจ่ายฉุกเฉิน'],skip:['⏸️','พักฟื้น'],back:['↩️','ภาระหนี้'],invest:['📈','ลงทุน'],insure:['🛡️','ประกัน'],accident:['🚑','อุบัติเหตุ'],illness:['🏥','เจ็บป่วย']};
+const M={start:['🏁','เริ่ม'],luck:['🍀','โชคดี'],bad:['⚡','โชคร้าย'],skip:['⏸️','พัก'],back:['↩️','ถอย'],invest:['📈','ลงทุน'],insure:['🛡️','ประกัน'],accident:['🚑','อุบัติเหตุ'],illness:['🏥','เจ็บป่วย']};
 const INS={life:'ชีวิต',hl:'สุขภาพ',acc:'อุบัติเหตุ'},PR={life:3000,hl:2500,acc:1500},CV={life:15000,hl:20000,acc:10000};
-const MKT={bull:{lo:[.72,1200,-800],hi:[.48,6000,-4000]},flat:{lo:[.58,750,-700],hi:[.32,3000,-4000]},bear:{lo:[.35,750,-1200],hi:[.18,3000,-5000]}};
-const MKN={bull:['▲','ตลาดขาขึ้น · โอกาสเติบโต','#1e9e72'],flat:['▬','ตลาดทรงตัว · ผลตอบแทนผันผวน','#6e7a8a'],bear:['▼','ตลาดขาลง · ความเสี่ยงขาดทุนสูง','#d6453d']};
+const MKT={bull:{lo:[.9,1200,-300],hi:[.7,6000,-3000]},flat:{lo:[.7,750,-300],hi:[.45,3000,-3000]},bear:{lo:[.2,750,-1000],hi:[.2,3000,-3000]}};
+const MKN={bull:['▲','ตลาดกระทิง ผลตอบแทนสูง','#1e9e72'],flat:['▬','ตลาดทรงตัว','#6e7a8a'],bear:['▼','ตลาดหมี ขาดทุนง่าย','#d6453d']};
 const mkt=()=>(G.mk&&G.mk[(G.round||1)-1])||'flat';
 const mbanner=()=>{const n=MKN[mkt()];return `<div class="mk" style="background:${n[2]}">${n[0]} ${n[1]}</div>`};
 const odds=k=>{const w=MKT[mkt()][k],p=Math.round(w[0]*100);return `${p}% +${f(w[1])} / ${100-p}% -${f(-w[2])}`};
@@ -100,11 +105,11 @@ const isTurn=()=>G.phase=='play'&&G.order&&G.order[G.turn]==uid;
 const pick=p=>({pos:p.pos,cash:p.cash,ins:p.ins,st:p.st,skip:p.skip,cov:p.cov,lap:p.lap||0});
 
 function eff(p,t){let m='',v;
- if(t=='luck'){v=[500,1000,1500,2500][rnd(4)];p.cash+=v;m='ได้รับรายได้พิเศษ/โบนัส +'+f(v)}
- else if(t=='bad'){v=[800,1500,2500,4000][rnd(4)];p.cash-=v;m='รายจ่ายฉุกเฉิน/ซ่อมรถ/ของใช้จำเป็น -'+f(v)}
- else if(t=='skip'){p.skip=1;m='พัก 1 ตา · หยุดตัดสินใจทางการเงินชั่วคราว'}
- else if(t=='back'){p.pos=(p.pos+25)%28;m='ภาระหนี้/ค่าใช้จ่ายก้อนใหญ่ ทำให้แผนสะดุด (ถอย 3 ช่อง)'}
- else if(t=='accident'||t=='illness'){const ill=t=='illness',k=ill?'hl':'acc';v=ill?[3500,5000,8000,12000][rnd(4)]:[1500,3000,5000,8000][rnd(4)];let pay=0;
+ if(t=='luck'){v=1000*(1+rnd(3));p.cash+=v;m='+'+f(v)}
+ else if(t=='bad'){v=1000*(1+rnd(3));p.cash-=v;m='-'+f(v)}
+ else if(t=='skip'){p.skip=1;m='พัก 1 ตา'}
+ else if(t=='back'){p.pos=(p.pos+25)%28;m='ถอยหลัง 3 ช่อง'}
+ else if(t=='accident'||t=='illness'){const ill=t=='illness',k=ill?'hl':'acc';v=ill?4000+2000*rnd(4):2000+1500*rnd(4);let pay=0;
   if(p.ins.includes(k)){pay=Math.min(v,p.cov[k]||0);p.cov[k]=(p.cov[k]||0)-pay;if(p.cov[k]<=0)p.ins=p.ins.filter(x=>x!=k)}
   const o=v-pay;m=(ill?'เจ็บป่วย ':'อุบัติเหตุ ')+'ค่ารักษา '+f(v)+(pay?' ประกันจ่าย '+f(pay):'')+' จ่ายเอง '+f(o);
   if(ill&&p.cash<o){if(p.ins.includes('life')){p.ins=p.ins.filter(x=>x!='life');p.cash=CV.life;return 'เสียชีวิต! ประกันชีวิตจ่ายทุน '+f(CV.life)+' กลับมาเริ่มใหม่'}
@@ -188,6 +193,62 @@ function admin(){asb=supabase.createClient(SB_URL,SB_KEY);adLoad();setInterval(a
 const finalBtn=()=>{if(!G.final)return'';const i=rank().indexOf(uid);
  if(i<0||i>=(G.adv||3)||P[uid].st!='ok')return '<div class="card">ขอบคุณที่ร่วมเล่น 🎉</div>';
  return `<div class="card lv0"><h3>🏆 คุณผ่านเข้ารอบชิง!</h3><button style="width:100%;font-size:1.2rem" onclick="location.search='?room=${G.final}&role=player&name='+encodeURIComponent(P[uid].name)">ไปห้องชิงชนะเลิศ</button></div>`};
+const TC={start:'#2f5f93',luck:'#1e9e72',bad:'#d6453d',skip:'#6e7a8a',back:'#6e7a8a',invest:'#b9801a',insure:'#5b6ee1',accident:'#e8743b',illness:'#c2415f'};
+const PIPS={1:[[.5,.5]],2:[[.25,.25],[.75,.75]],3:[[.25,.25],[.5,.5],[.75,.75]],4:[[.25,.25],[.75,.25],[.25,.75],[.75,.75]],5:[[.25,.25],[.75,.25],[.5,.5],[.25,.75],[.75,.75]],6:[[.25,.25],[.75,.25],[.25,.5],[.75,.5],[.25,.75],[.75,.75]]};
+const FR={1:[0,0,0],6:[Math.PI,0,0],2:[0,0,Math.PI/2],5:[0,0,-Math.PI/2],3:[-Math.PI/2,0,0],4:[Math.PI/2,0,0]};
+let W3=null;
+function init3d(){
+ const wrap=document.createElement('div');wrap.style.cssText='position:absolute;inset:0';
+ const R=new THREE.WebGLRenderer({antialias:true,alpha:true});R.setPixelRatio(Math.min(window.devicePixelRatio||1,2));R.shadowMap.enabled=true;
+ R.domElement.style.cssText='width:100%;height:100%;display:block;touch-action:none';wrap.appendChild(R.domElement);
+ const sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,1.33,.1,100);
+ sc.add(new THREE.HemisphereLight(0xffffff,0x8899aa,.9));
+ const dl=new THREE.DirectionalLight(0xffffff,.85);dl.position.set(5,10,6);dl.castShadow=true;dl.shadow.mapSize.set(1024,1024);
+ const sh=dl.shadow.camera;sh.left=sh.bottom=-7;sh.right=sh.top=7;sc.add(dl);
+ const box=(w,h,d,c,y)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color:c,roughness:.7}));m.position.y=y;m.receiveShadow=true;sc.add(m)};
+ box(8.7,.3,8.7,0x16243a,-.2);box(6.2,.08,6.2,0x213552,-.02);
+ const tex=t=>{const c=document.createElement('canvas');c.width=c.height=256;const x=c.getContext('2d');
+  x.fillStyle=TC[t];x.fillRect(0,0,256,256);x.fillStyle='rgba(255,255,255,.16)';x.fillRect(0,0,256,12);
+  x.fillStyle='#fff';x.textAlign='center';x.font='96px sans-serif';x.fillText(M[t][0],128,122);
+  x.font='bold 44px "IBM Plex Sans Thai",sans-serif';x.fillText(M[t][1],128,200);return new THREE.CanvasTexture(c)};
+ T.forEach((t,i)=>{const[r,c]=POS[i],sm=new THREE.MeshStandardMaterial({color:TC[t],roughness:.6}),top=new THREE.MeshStandardMaterial({map:tex(t),roughness:.55});
+  const m=new THREE.Mesh(new THREE.BoxGeometry(.94,.22,.94),[sm,sm,top,sm,sm,sm]);m.position.set(c-3.5,0,r-3.5);m.castShadow=m.receiveShadow=true;sc.add(m)});
+ const PW={};
+ const mkPawn=id=>{const g=new THREE.Group(),m=new THREE.MeshStandardMaterial({color:col(id),roughness:.35});
+  const b=new THREE.Mesh(new THREE.CylinderGeometry(.13,.22,.42,20),m);b.position.y=.21;
+  const h=new THREE.Mesh(new THREE.SphereGeometry(.17,20,16),m);h.position.y=.58;b.castShadow=h.castShadow=true;g.add(b,h);
+  const c=document.createElement('canvas');c.width=256;c.height=96;const x=c.getContext('2d');x.fillStyle=col(id);x.fillRect(0,8,256,80);
+  x.fillStyle='#fff';x.textAlign='center';x.font='bold 50px "IBM Plex Sans Thai",sans-serif';x.fillText(P[id].name.slice(0,7),128,66);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));sp.scale.set(1.25,.47,1);sp.position.y=1.1;g.add(sp);
+  sc.add(g);PW[id]=g};
+ const diceMesh=n=>{const f=k=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,128,128);x.fillStyle='#14213a';
+   PIPS[k].forEach(([a,b])=>{x.beginPath();x.arc(a*128,b*128,12,0,7);x.fill()});return new THREE.MeshStandardMaterial({map:new THREE.CanvasTexture(c)})};
+  const m=new THREE.Mesh(new THREE.BoxGeometry(.8,.8,.8),[2,5,1,6,3,4].map(f));m.castShadow=true;return m};
+ let az=0,drag=null,lastLog=null,dice=null,W=0,H=0;const tgt=new THREE.Vector3();
+ R.domElement.addEventListener('pointerdown',e=>{drag=e.clientX});window.addEventListener('pointerup',()=>{drag=null});
+ R.domElement.addEventListener('pointermove',e=>{if(drag!=null){az-=(e.clientX-drag)*.008;drag=e.clientX}});
+ function frame(tm){requestAnimationFrame(frame);if(!wrap.isConnected)return;
+  const w=wrap.clientWidth,h=wrap.clientHeight;if(w&&h&&(w!=W||h!=H)){W=w;H=h;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+  const ids3=part(),grp={};
+  ids3.forEach(id=>{if(!PW[id])mkPawn(id);const d=disp[id];if(d!=null)(grp[d]=grp[d]||[]).push(id)});
+  Object.keys(PW).forEach(id=>{if(!ids3.includes(id)){sc.remove(PW[id]);delete PW[id]}});
+  const curId=G.phase=='play'&&G.order?G.order[G.turn]:null;
+  ids3.forEach(id=>{const g=PW[id],p=P[id],d=disp[id];if(d==null||!g)return;g.visible=p.st=='ok';
+   const[r,c]=POS[d],L=grp[d],k=L.indexOf(id),n=L.length,tx=c-3.5+(n>1?(k%2?.2:-.2):0),tz=r-3.5+(n>2?(k>1?.2:-.2):0);
+   if(!g.userData.r){g.position.set(tx,.11,tz);g.userData.r=1}
+   const dx=tx-g.position.x,dz=tz-g.position.z,ds=Math.hypot(dx,dz);g.position.x+=dx*.25;g.position.z+=dz*.25;
+   g.position.y=.11+(ds>.04?Math.sin(Math.min(ds,1)*Math.PI)*.4:0);g.scale.setScalar(id==curId?1.25:1)});
+  const cp=curId&&PW[curId]?PW[curId].position:null;tgt.lerp(new THREE.Vector3(cp?cp.x*.35:0,0,cp?cp.z*.35:0),.04);
+  const a=az+Math.sin(tm/6000)*.12;cam.position.set(tgt.x+Math.sin(a)*9.5,8.8,tgt.z+Math.cos(a)*9.5);cam.lookAt(tgt);
+  const lg=(G.log||[])[0];
+  if(lastLog===null)lastLog=lg||'';else if(lg!==lastLog){lastLog=lg;const m=/ทอยได้ (\d)/.exec(lg||'');
+   if(m){if(dice)sc.remove(dice.m);dice={m:diceMesh(+m[1]),t0:tm,n:+m[1]};dice.m.position.set(0,3,0);sc.add(dice.m)}}
+  if(dice){const t=(tm-dice.t0)/1100,f=FR[dice.n],m=dice.m;
+   if(t<1){m.position.y=.45+Math.abs(Math.cos(t*Math.PI*2.5))*(1-t)*2.2;m.rotation.set(f[0]+6*Math.PI*(1-t),f[1]+8*Math.PI*(1-t),f[2]+4*Math.PI*(1-t))}
+   else{m.position.y=.45;m.rotation.set(f[0],f[1],f[2]);if(t>3.2)m.scale.setScalar(Math.max(0,1-(t-3.2)*3));if(t>3.6){sc.remove(m);dice=null}}}
+  R.render(sc,cam)}
+ requestAnimationFrame(frame);return wrap}
+function mount3d(){if(typeof THREE=='undefined')return;if(!W3)W3=init3d();const sl=document.getElementById('b3slot');if(sl)sl.prepend(W3)}
 function host(){
  const cells=cellsHtml();
  const cur=G.phase=='play'?P[G.order[G.turn]]:null;
@@ -196,7 +257,7 @@ function host(){
   return `<div class="card ${o?'out':'lv'+lv(p)}"><div class="row"><b style="color:${col(id)}">● ${esc(p.name)} ${cur&&G.order[G.turn]==id?'▶':''}</b><span>฿${f(p.cash)}</span></div><div>${o?ST[p.st]+' (ผี 👻)':chips(p)}</div></div>`}).join('');
  return `<div class="row"><div><h1>เกมวางแผนชีวิต</h1><div class="mut">ห้อง <b>${room}</b></div></div><div>${G.phase!='play'&&G.phase!='end'?`<button onclick="start()" ${ids().length<2?'disabled':''}>เริ่มเกม (${ids().length} คน)</button>`:''}<button class="g" onclick="reset()">${arm?'กดอีกครั้งเพื่อยืนยัน':'รีเซ็ต'}</button></div></div>
  ${G.phase=='end'?podium():''}
- <div class="wrap"><div class="board">${cells}${mid}</div><div>${G.phase=='lobby'?qr():''}${list}<div class="mut">สถานะการเงิน: 🟢 เงินสำรองเพียงพอ 🟡 เริ่มตึงตัว 🟠 เสี่ยงขาดสภาพคล่อง 🔴 วิกฤตการเงิน</div></div></div>`}
+ <div class="wrap">${typeof THREE!='undefined'?`<div class="b3" id="b3slot"><div class="hud">${mid}</div></div>`:`<div class="board">${cells}${mid}</div>`}<div>${G.phase=='lobby'?qr():''}${list}<div class="mut">🟢 ปลอดภัย 🟡 เฝ้าระวัง 🟠 อันตราย 🔴 วิกฤต</div></div></div>`}
 
 function play(){const p=P[uid];
  if(p&&G.phase!='lobby'&&G.order&&!G.order.includes(uid))return '<div class="card"><h3>เกมเริ่มไปแล้ว</h3><div class="mut">คุณเข้าห้องไม่ทัน รอเล่นรอบหน้านะ</div></div>';
@@ -207,17 +268,17 @@ function play(){const p=P[uid];
  else if(out)act=`<div class="card"><h3>${ST[p.st]}</h3><div class="mut">คุณเป็นผีแล้ว ป่วนผู้เล่นที่ยังอยู่ได้ ${p.ghost} ครั้ง</div><button onclick="haunt()" ${p.ghost<1||busy?'disabled':''}>👻 ปล่อยข่าวร้าย (-1,000)</button></div>`;
  else if(G.phase=='lobby')act='<div class="card">รอผู้ควบคุมเริ่มเกม…</div>';
  else if(isTurn()){
-  if(choice&&choice.t=='invest')act=`<div class="card"><h3>📈 โอกาสลงทุน (ใช้เงิน 3,000 บาท)</h3>${mbanner()}<div class="mut">ความเสี่ยงต่ำ: ${odds('lo')}<br>ความเสี่ยงสูง: ${odds('hi')}<br>ผลตอบแทนไม่แน่นอน และอาจขาดทุนได้</div><button onclick="inv('lo')" ${p.cash<3000?'disabled':''}>เสี่ยงต่ำ</button><button onclick="inv('hi')" ${p.cash<3000?'disabled':''}>เสี่ยงสูง</button><button class="g" onclick="inv('no')">ข้าม</button></div>`;
-  else if(choice)act=`<div class="card"><h3>🛡️ วางแผนรับมือความเสี่ยง</h3><div class="mut">จ่ายเบี้ยเพื่อรับความคุ้มครองตามวงเงินที่กำหนด · ควรเลือกให้เหมาะกับเงินสดที่มี</div>${Object.keys(PR).filter(k=>!p.ins.includes(k)).map(k=>`<button onclick="buy('${k}')" ${p.cash<PR[k]?'disabled':''}>${INS[k]} ฿${f(PR[k])}<br><small>คุ้มครอง ${f(CV[k])}</small></button>`).join('')}<button class="g" onclick="buy('no')">ไม่ซื้อ</button></div>`;
+  if(choice&&choice.t=='invest')act=`<div class="card"><h3>📈 ช่องลงทุน (3,000)</h3>${mbanner()}<div class="mut">ต่ำ: ${odds('lo')}<br>สูง: ${odds('hi')}</div><button onclick="inv('lo')" ${p.cash<3000?'disabled':''}>เสี่ยงต่ำ</button><button onclick="inv('hi')" ${p.cash<3000?'disabled':''}>เสี่ยงสูง</button><button class="g" onclick="inv('no')">ข้าม</button></div>`;
+  else if(choice)act=`<div class="card"><h3>🛡️ ซื้อประกัน</h3><div class="mut">สุขภาพ/อุบัติเหตุ จ่ายค่ารักษาตามวงเงิน · ชีวิต จ่ายทุนเมื่อเสียชีวิต</div>${Object.keys(PR).filter(k=>!p.ins.includes(k)).map(k=>`<button onclick="buy('${k}')" ${p.cash<PR[k]?'disabled':''}>${INS[k]} ฿${f(PR[k])}<br><small>คุ้มครอง ${f(CV[k])}</small></button>`).join('')}<button class="g" onclick="buy('no')">ไม่ซื้อ</button></div>`;
   else if(p.skip>0)act=`<div class="card"><h3>⏸️ ติดพัก</h3><button onclick="skipT()" ${busy?'disabled':''}>ข้ามตานี้</button></div>`;
   else act=`<div class="card"><h2>ตาของคุณ!</h2><button style="font-size:1.4rem;width:100%;padding:20px" onclick="roll()" ${busy?'disabled':''}>${busy?'🎲 กำลังทอย…':'🎲 ทอยลูกเต๋า'}</button></div>`}
  else act=`<div class="card mut">รอ <b style="color:${col(G.order[G.turn])}">${esc((P[G.order[G.turn]]||{}).name||'')}</b> เล่น…</div>`;
- return `<div class="board">${cellsHtml()}${mini()}</div><div class="card ${out?'out':'lv'+lv(p)}"><div class="row"><h2 style="color:${col(uid)}">${esc(p.name)}</h2><span class="mut">ช่อง ${M[tl][0]} ${M[tl][1]} · รอบ ${p.lap||0}</span></div><div class="big">฿${f(p.cash)}</div><div class="mut">เงินสดคงเหลือ (บาท)</div>${out?ST[p.st]:chips(p)}</div>${act}<div>${logs(3)}</div>`}
+ return `<div class="board">${cellsHtml()}${mini()}</div><div class="card ${out?'out':'lv'+lv(p)}"><div class="row"><h2 style="color:${col(uid)}">${esc(p.name)}</h2><span class="mut">ช่อง ${M[tl][0]} ${M[tl][1]} · รอบ ${p.lap||0}</span></div><div class="big">฿${f(p.cash)}</div>${out?ST[p.st]:chips(p)}</div>${act}<div>${logs(3)}</div>`}
 
 function render(){if(P)sync();if(document.activeElement&&document.activeElement.tagName=='INPUT')return;
  if(!room){$.innerHTML='<h1>เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="newRoom()">🖥️ สร้างห้อง (ผู้ควบคุม)</button><div class="card"><input id="rc" placeholder="รหัสห้อง 4 ตัวอักษร" maxlength="6"><button onclick="goRoom()">📱 เข้าห้อง (ผู้เล่น)</button></div><button class="g" style="width:100%" onclick="location.search=&quot;?admin=1&quot;">📊 ผู้ดูแลทุกห้อง</button>';return}
  if(!db){$.innerHTML='<div class="card">กำลังเชื่อมต่อ…</div>';return}
- $.innerHTML=role==null?`<h1>เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="setRole('player')">📱 ผู้เล่น (มือถือ)</button><button class="g" style="width:100%;padding:24px" onclick="setRole('host')">🖥️ ผู้ควบคุม (คอม)</button>`:role=='host'?host():play()}
+ $.innerHTML=role==null?`<h1>เกมวางแผนชีวิต</h1><button style="width:100%;padding:24px" onclick="setRole('player')">📱 ผู้เล่น (มือถือ)</button><button class="g" style="width:100%;padding:24px" onclick="setRole('host')">🖥️ ผู้ควบคุม (คอม)</button>`:role=='host'?host():play();if(role=='host')mount3d()}
 
 (function(){if(Q.get('admin')){admin();return}if(!room){render();return}
  try{uid=localStorage.getItem('uid')}catch(e){}
