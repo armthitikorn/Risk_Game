@@ -42,7 +42,7 @@ const M={start:['🏁','เริ่ม'],luck:['🍀','โชคดี'],bad:['
 const INS={life:'ชีวิต',hl:'สุขภาพ',acc:'อุบัติเหตุ'},PR={life:2000,hl:1500,acc:1000};
 const COL=['#e6453a','#2f6fed','#2e9e5b','#c47b00','#8e44ad','#00a5a8','#d6336c','#5f6b7a','#7a4a1e','#3b5bdb'];
 const POS=T.map((_,i)=>i<8?[0,i]:i<14?[i-7,7]:i<22?[7,7-(i-14)]:[7-(i-21),0]);
-const SB_URL='YOUR_SUPABASE_URL',SB_KEY='YOUR_SUPABASE_ANON_KEY';
+const SB_URL='https://wzwyotzzxycqfwercakh.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3lvdHp6eHljcWZ3ZXJjYWtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcwNTg3MTMsImV4cCI6MjA3MjYzNDcxM30.lgiAf9oBUqsaWGb3u_80wuoKAODQHE_lIBxpGumhrno';
 const Q=new URLSearchParams(location.search);const room=(Q.get('room')||'').toUpperCase();
 function mkDb(room){const sb=supabase.createClient(SB_URL,SB_KEY),C={},subs=[];
  const note=()=>subs.forEach(s=>s());
