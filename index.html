@@ -58,7 +58,7 @@ input{font:inherit;padding:12px 14px;border-radius:10px;border:1px solid var(--b
 <script>
 const T=['start','luck','invest','bad','insure','illness','skip','luck','accident','invest','back','luck','insure','bad','illness','invest','luck','skip','accident','insure','back','luck','bad','invest','illness','insure','accident','luck'];
 const M={start:['🏁','เริ่ม'],luck:['🍀','โชคดี'],bad:['⚡','โชคร้าย'],skip:['⏸️','พัก'],back:['↩️','ถอย'],invest:['📈','ลงทุน'],insure:['🛡️','ประกัน'],accident:['🚑','อุบัติเหตุ'],illness:['🏥','เจ็บป่วย']};
-const INS={life:'ชีวิต',hl:'สุขภาพ',acc:'อุบัติเหตุ'},PR={life:3000,hl:2500,acc:1500},CV={life:15000,hl:20000,acc:10000};
+const INS={life:'ชีวิต',hl:'สุขภาพ',acc:'อุบัติเหตุ',sv:'สะสมทรัพย์'},PR={life:3000,hl:2500,acc:1500,sv:3000},CV={life:15000,hl:20000,acc:10000,sv:0};
 const MKT={bull:{lo:[.9,1200,-300],hi:[.7,6000,-3000]},flat:{lo:[.7,750,-300],hi:[.45,3000,-3000]},bear:{lo:[.2,750,-1000],hi:[.2,3000,-3000]}};
 const MKN={bull:['▲','ตลาดกระทิง ผลตอบแทนสูง','#1e9e72'],flat:['▬','ตลาดทรงตัว','#6e7a8a'],bear:['▼','ตลาดหมี ขาดทุนง่าย','#d6453d']};
 const mkt=()=>(G.mk&&G.mk[(G.round||1)-1])||'flat';
@@ -97,16 +97,27 @@ let db,uid,role=Q.get('role'),P={},G={phase:'lobby'},busy=false,choice=null,arm=
 const ids=()=>Object.keys(P).sort((a,b)=>P[a].n-P[b].n);
 const col=id=>COL[ids().indexOf(id)%10];
 const lv=p=>{const h=p.ins.includes('hl');return p.cash<2000?3:(p.cash<6000&&!h)?2:(p.cash<5000||!h)?1:0};
-const score=p=>p.cash+1000*p.ins.length-(p.debt||0);
+const GOAL=150000,STK=5000,RT={bull:{lo:.10,hi:.30},flat:{lo:.03,hi:.05},bear:{lo:-.04,hi:-.25}};
+const rdOf=g=>Math.min(g.round||1,g.max||20);
+const holdVal=(h,g)=>{let v=h.s;for(let r=h.r+1;r<=rdOf(g);r++)v*=1+RT[(g.mk&&g.mk[r-1])||'flat'][h.k];return v};
+const invVal=(p,g=G)=>(p.hold||[]).reduce((a,h)=>a+holdVal(h,g),0);
+const invCost=p=>(p.hold||[]).reduce((a,h)=>a+h.s,0);
+const svVal=(p,g=G)=>p.ins.includes('sv')?(p.svP||0)*(0.9+0.06*Math.max(0,rdOf(g)-(p.svR||1))):0;
+const net=(p,g=G)=>p.cash+invVal(p,g)+svVal(p,g)-(p.debt||0);
+const score=(p,g=G)=>net(p,g)+1000*p.ins.length;
 const part=()=>G.order&&G.phase!='lobby'?ids().filter(i=>G.order.includes(i)):ids();
-const rank=()=>part().sort((a,b)=>(P[b].st=='ok')-(P[a].st=='ok')||score(P[b])-score(P[a]));
-const chips=p=>(p.ins.map(k=>`<span class="chip">🛡️${INS[k]} ${f((p.cov||{})[k]||0)}</span>`).join('')||'<span class="chip">ไม่มีประกัน</span>')+((p.debt||0)>0?`<span class="chip" style="border-color:var(--loss);color:var(--loss)">หนี้ ${f(p.debt)}</span>`:'');
+const rank=()=>part().sort((a,b)=>(b==G.winner)-(a==G.winner)||(P[b].st=='ok')-(P[a].st=='ok')||score(P[b])-score(P[a]));
+const chips=p=>(p.ins.map(k=>`<span class="chip">🛡️${INS[k]} ${k=='sv'?f(svVal(p)):f((p.cov||{})[k]||0)}</span>`).join('')||'<span class="chip">ไม่มีประกัน</span>')+((p.hold||[]).length?`<span class="chip">📈 ลงทุน ${f(invVal(p))}</span>`:'')+((p.debt||0)>0?`<span class="chip" style="border-color:var(--loss);color:var(--loss)">หนี้ ${f(p.debt)}</span>`:'');
 const ST={ok:'',dead:'💀 เสียชีวิต',broke:'💸 ล้มละลาย'};
 const isTurn=()=>G.phase=='play'&&G.order&&G.order[G.turn]==uid;
-const pick=p=>({pos:p.pos,cash:p.cash,ins:p.ins,st:p.st,skip:p.skip,cov:p.cov,lap:p.lap||0,debt:p.debt||0});
+const pick=p=>({pos:p.pos,cash:p.cash,ins:p.ins,st:p.st,skip:p.skip,cov:p.cov,lap:p.lap||0,debt:p.debt||0,hold:p.hold||[],svP:p.svP||0,svR:p.svR||0});
 
 const SV=6000;
-function surr(p){if(p.cash<0&&p.ins.includes('life')){p.ins=p.ins.filter(x=>x!='life');p.cash+=SV;return ' ใช้มูลค่าเวนคืนประกันชีวิต +'+f(SV)+' กรมธรรม์สิ้นสุด'}return ''}
+function surr(p){let m='';
+ if(p.cash<0&&(p.hold||[]).length){const v=Math.round(invVal(p));p.cash+=v;p.hold=[];m+=' ขายหน่วยลงทุน +'+f(v)}
+ if(p.cash<0&&p.ins.includes('sv')){const v=Math.round(svVal(p));p.cash+=v;p.ins=p.ins.filter(x=>x!='sv');m+=' เวนคืนประกันสะสมทรัพย์ +'+f(v)}
+ if(p.cash<0&&p.ins.includes('life')){p.ins=p.ins.filter(x=>x!='life');p.cash+=SV;m+=' ใช้มูลค่าเวนคืนประกันชีวิต +'+f(SV)+' กรมธรรม์สิ้นสุด'}
+ return m}
 function eff(p,t){let m='',v;
  if(t=='luck'){v=1000*(1+rnd(3));p.cash+=v;m='+'+f(v)}
  else if(t=='bad'){v=1000*(1+rnd(3));p.cash-=v;m='-'+f(v)}
@@ -127,12 +138,13 @@ async function fin(patch,msg){busy=true;render();
  const o=G.order;let t=G.turn,r=G.round,phase='play';
  const alive=o.filter(i=>P[i]&&P[i].st=='ok');
  do{t++;if(t>=o.length){t=0;r++}}while(alive.length&&!(P[o[t]]&&P[o[t]].st=='ok'));
- if(!alive.length||r>G.max||(G.n0>3&&alive.length<=3))phase='end';
- await db.doc('game/main').update({turn:t,round:r,phase,log:[msg,...(G.log||[])].slice(0,8)});
+ const win=P[uid].st=='ok'&&net(P[uid])>=GOAL;
+ if(!alive.length||(alive.length<=1&&G.n0>1)||r>G.max||(G.n0>3&&alive.length<=3)||win)phase='end';
+ await db.doc('game/main').update({turn:t,round:r,phase,...(win?{winner:uid}:{}),log:[msg+(win?' 🏆 ถึงเป้าหมายความมั่งคั่ง!':''),...(G.log||[])].slice(0,8)});
  choice=null;busy=false;render()}
 
 async function roll(){if(busy)return;busy=true;render();
- const p={...P[uid],ins:[...P[uid].ins],cov:{...(P[uid].cov||{})}},d=1+rnd(6);
+ const p={...P[uid],ins:[...P[uid].ins],cov:{...(P[uid].cov||{})},hold:[...(P[uid].hold||[])]},d=1+rnd(6);
  let m=p.name+' ทอยได้ '+d;
  if(p.pos+d>=28){p.lap=(p.lap||0)+1;const b=2000+500*p.lap;p.cash+=b;m+=' ผ่านรอบที่ '+p.lap+' โบนัส +'+f(b);const rp=Math.min(p.debt||0,b);if(rp){p.debt-=rp;p.cash-=rp;m+=' (หักชำระหนี้ '+f(rp)+')'}}
  p.pos=(p.pos+d)%28;const t=T[p.pos];m+=' → '+M[t][1]+' ';
@@ -142,27 +154,30 @@ async function loan(){const p=P[uid];if(busy||p.cash>=3000||(p.debt||0)>0)return
  await db.doc('players/'+uid).update({cash:p.cash+8000,debt:10000});
  await db.doc('game/main').update({log:[p.name+' กู้สถาบันการเงิน +8,000 (ต้องคืน 10,000)',...(G.log||[])].slice(0,8)});busy=false;render()}
 async function skipT(){const p=P[uid];await fin({skip:p.skip-1},p.name+' พักตานี้')}
-async function inv(k){const p={...P[uid],ins:[...P[uid].ins],cov:{...(P[uid].cov||{})}};let m=p.name+' ผ่านช่องลงทุน';
- if(k!='no'){const hi=k=='hi',mk=mkt(),w=MKT[mk][k],win=Math.random()<w[0],v=win?w[1]:w[2];p.cash+=v;
-  m=p.name+' ลงทุน'+(hi?'เสี่ยงสูง ':'เสี่ยงต่ำ ')+MKN[mk][0]+' '+(v>0?'กำไร +':'ขาดทุน ')+f(v);
-  if(p.cash<0)m+=surr(p);if(p.cash<0){p.st='broke';m+=' ล้มละลาย 💸'}}
+async function inv(k){const p={...P[uid],ins:[...P[uid].ins],cov:{...(P[uid].cov||{})},hold:[...(P[uid].hold||[])]};let m=p.name+' ผ่านช่องลงทุน';
+ if(k!='no'){p.cash-=STK;p.hold.push({s:STK,k,r:rdOf(G)});m=p.name+' ลงทุน'+(k=='hi'?'เสี่ยงสูง ':'เสี่ยงต่ำ ')+f(STK)+' มูลค่าขึ้นลงตามตลาดทุกรอบ'}
  await fin(pick(p),m)}
-async function buy(k){const p={...P[uid],ins:[...P[uid].ins],cov:{...(P[uid].cov||{})}};let m=p.name+' ไม่ซื้อประกัน';
- if(k!='no'){p.cash-=PR[k];p.ins.push(k);p.cov[k]=CV[k];m=p.name+' ซื้อประกัน'+INS[k]}
+async function buy(k){const p={...P[uid],ins:[...P[uid].ins],cov:{...(P[uid].cov||{})},hold:[...(P[uid].hold||[])]};let m=p.name+' ไม่ซื้อประกัน';
+ if(k!='no'){p.cash-=PR[k];p.ins.push(k);p.cov[k]=CV[k];if(k=='sv'){p.svP=PR.sv;p.svR=rdOf(G)}m=p.name+' ซื้อประกัน'+INS[k]}
  await fin(pick(p),m)}
 async function haunt(){const p=P[uid],al=part().filter(i=>P[i].st=='ok');if(!al.length||p.ghost<1)return;
- const t=al[rnd(al.length)],q=P[t],q2={...q,ins:[...q.ins],cash:q.cash-1000};if(q2.cash<0)surr(q2);const u={cash:q2.cash,ins:q2.ins};if(q2.cash<0)u.st='broke';
+ const t=al[rnd(al.length)],q=P[t],q2={...q,ins:[...q.ins],cash:q.cash-1000};if(q2.cash<0)surr(q2);const u={cash:q2.cash,ins:q2.ins,hold:q2.hold||[]};if(q2.cash<0)u.st='broke';
  await db.doc('players/'+t).update(u);await db.doc('players/'+uid).update({ghost:p.ghost-1});
  await db.doc('game/main').update({log:[`👻 ${p.name} ปล่อยข่าวร้ายใส่ ${q.name} -1,000`,...(G.log||[])].slice(0,8)})}
 async function join(){if(G.phase!='lobby'){render();return}const n=document.getElementById('nm').value.trim().slice(0,12);if(!n)return;
- await db.doc('players/'+uid).set({name:n,pos:0,cash:10000,ins:[],st:'ok',skip:0,ghost:3,cov:{},lap:0,debt:0,n:Date.now()})}
+ await db.doc('players/'+uid).set({name:n,pos:0,cash:50000,ins:[],st:'ok',skip:0,ghost:3,cov:{},lap:0,debt:0,n:Date.now()})}
 async function start(){const o=ids().filter(i=>P[i].st=='ok').sort(()=>Math.random()-.5);if(o.length<2)return;
  await db.doc('game/main').set({phase:'play',order:o,turn:0,round:1,max:20,n0:o.length,log:['เริ่มเกม!'],mk:Array.from({length:21},()=>['bull','flat','bear'][rnd(3)])})}
 async function reset(){if(!arm){arm=true;render();return}arm=false;
  for(const i of ids())await db.doc('players/'+i).delete();await db.doc('game/main').set({phase:'lobby'})}
 function setRole(r){role=r;render()}
 
-const podium=()=>`<div class="card"><h2>🏆 จบเกม</h2>${rank().slice(0,3).map((id,i)=>`<div class="big">${'🥇🥈🥉'.slice(i*2,i*2+2)} ${esc(P[id].name)} <span class="mut">฿${f(score(P[id]))}</span></div>`).join('')}</div>`;
+const podium=()=>{const R=rank(),W=G.winner;
+ const best=fn=>{let b=null,v=0;R.forEach(id=>{const x=P[id].st=='ok'?fn(P[id]):0;if(x>v){v=x;b=id}});return b?[b,v]:null};
+ const ig=best(p=>invVal(p)-invCost(p)),sv=best(svVal),pr=best(p=>p.ins.length);
+ const aw=[R[0]?['🏆','วางแผนดีเยี่ยม',R[0],'คะแนน ฿'+f(score(P[R[0]]))]:null,ig?['📈','นักลงทุนยอดเยี่ยม',ig[0],'กำไรลงทุน +'+f(ig[1])]:null,sv?['🏦','นักออมยอดเยี่ยม',sv[0],'ประกันสะสมทรัพย์ ฿'+f(sv[1])]:null,pr?['🛡️','คุ้มครองรอบด้าน',pr[0],pr[1]+' กรมธรรม์']:null].filter(Boolean);
+ return `<div class="card"><h2>🏁 สรุปความมั่งคั่ง</h2>${W?`<div class="mut">มีผู้ถึงเป้าหมายความมั่งคั่ง เกมจบทันที</div>`:''}${aw.map(a=>`<div class="lg">${a[0]} <b>${a[1]}</b> · <b style="color:${col(a[2])}">${esc(P[a[2]].name)}</b> <span class="mut">${a[3]}</span></div>`).join('')}</div>${R.map((id,i)=>{const p=P[id],iv=invVal(p),ic=invCost(p);
+  return `<div class="card ${p.st!='ok'?'out':''}"><div class="row"><b style="color:${col(id)}">${i<3?'🥇🥈🥉'.slice(i*2,i*2+2):(i+1)+'.'} ${esc(p.name)}${id==W?' 🏆':''}</b><span class="big" style="font-size:1.4rem">฿${f(score(p))}</span></div><div class="mut">${p.st!='ok'?ST[p.st]+' · ':''}เงินสด ${f(p.cash)} · ลงทุน ${f(iv)} (${iv>=ic?'+':''}${f(iv-ic)}) · ประกันสะสมทรัพย์ ${f(svVal(p))} · หนี้ ${f(p.debt||0)}<br>ทรัพย์สินสุทธิ ${f(net(p))} + ความคุ้มครอง ${f(1000*p.ins.length)}</div><div>${chips(p)}</div></div>`}).join('')}`};
 const hl=t=>{let h=esc(t);const I=ids();I.forEach((id,i)=>{const n=esc(P[id].name);if(n)h=h.split(n).join('\u0001'+i+'\u0002')});
  return h.replace(/\u0001(\d+)\u0002/g,(_,i)=>`<b style="color:${col(I[i])}">${esc(P[I[i]].name)}</b>`)};
 const logs=n=>(G.log||[]).slice(0,n).map(l=>`<div class="lg">• ${hl(l)}</div>`).join('');
@@ -191,7 +206,7 @@ function sfxLog(m){if(m.includes('เริ่มเกม!')){sfx('start');retu
  const at=k=>setTimeout(()=>sfx(k),dl);
  if(m.includes('👻'))at('ghost');else if(m.includes('เสียชีวิต')||m.includes('ล้มละลาย'))at('sad');
  else if(m.includes('ค่ารักษา'))at('siren');else if(m.includes('โชคร้าย')||m.includes('ขาดทุน'))at('bad');
- else if(m.includes('ซื้อประกัน'))at('buy');else if(m.includes('โบนัส')||m.includes('โชคดี')||m.includes('กำไร'))at('coin');
+ else if(m.includes('ซื้อประกัน')||m.includes('ลงทุน'))at('buy');else if(m.includes('โบนัส')||m.includes('โชคดี')||m.includes('กำไร'))at('coin');
  else if(m.includes('กู้'))at('cash');else if(m.includes('พัก'))at('skip');else if(m.includes('ถอยหลัง'))at('back')}
 function togSnd(){SND=!SND;try{localStorage.setItem('snd',SND?'1':'0')}catch(e){}document.getElementById('snd').textContent=SND?'🔊':'🔇';if(SND){au();sfx('coin')}}
 window.addEventListener('pointerdown',()=>au(),{once:true});
@@ -215,14 +230,14 @@ async function adLoad(){const{data,error}=await asb.from('game_rows').select('ro
 async function sendFinal(){const c=FC.toUpperCase().replace(/[^A-Z0-9]/g,''),n=Math.max(1,Math.min(10,+FN||3));if(!c)return;
  for(const k of Object.keys(AR))if(AR[k].G&&AR[k].G.phase=='end')await asb.rpc('merge_row',{p_room:k,p_path:'game/main',p_patch:{final:c,adv:n}});adLoad()}
 function adDraw(){if(document.activeElement&&document.activeElement.tagName=='INPUT')return;
- const sc=p=>p.cash+1000*p.ins.length-(p.debt||0),TH={lobby:'รอเริ่ม',play:'กำลังเล่น',end:'จบแล้ว'};
- const rk=r=>{const o=r.G&&r.G.order&&r.G.phase!='lobby'?r.G.order:Object.keys(r.P);return o.filter(i=>r.P[i]).sort((a,b)=>(r.P[b].st=='ok')-(r.P[a].st=='ok')||sc(r.P[b])-sc(r.P[a]))};
+ const sc=(p,g)=>score(p,g||{}),TH={lobby:'รอเริ่ม',play:'กำลังเล่น',end:'จบแล้ว'};
+ const rk=r=>{const o=r.G&&r.G.order&&r.G.phase!='lobby'?r.G.order:Object.keys(r.P);return o.filter(i=>r.P[i]).sort((a,b)=>(b==(r.G||{}).winner)-(a==(r.G||{}).winner)||(r.P[b].st=='ok')-(r.P[a].st=='ok')||sc(r.P[b],r.G)-sc(r.P[a],r.G))};
  const ks=Object.keys(AR).filter(k=>AR[k].G||Object.keys(AR[k].P).length).sort();
  const n=ks.reduce((a,k)=>a+Object.keys(AR[k].P).length,0),e=ks.filter(k=>AR[k].G&&AR[k].G.phase=='end').length;
  $.innerHTML=`<h1>📊 ผู้ดูแลทุกห้อง</h1><div class="mut">${ks.length} ห้อง · ${n} คน · จบแล้ว ${e} ห้อง</div>
  <div class="card"><b>🏆 ส่งผู้ชนะเข้ารอบชิง</b><input placeholder="รหัสห้องรอบชิง (ตั้งเอง เช่น FINAL)" value="${esc(FC)}" oninput="FC=this.value"><input type="number" min="1" max="10" value="${FN}" oninput="FN=this.value"><div class="mut">จำนวนผู้ชนะต่อห้อง · ส่งให้เฉพาะห้องที่จบแล้ว</div><button onclick="sendFinal()">ส่งผู้ชนะไปรอบชิง</button></div>
  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:8px">${ks.map(k=>{const r=AR[k],g=r.G||{},end=g.phase=='end';
-  return `<div class="card"><div class="row"><b>ห้อง ${esc(k)}</b><span class="mut">${TH[g.phase||'lobby']} · ${Object.keys(r.P).length} คน${g.phase=='play'?' · ตา '+g.round:''}</span></div>${rk(r).slice(0,Math.max(3,g.adv||0)).map((id,i)=>{const p=r.P[id];return `<div class="lg">${i<3?'🥇🥈🥉'.slice(i*2,i*2+2):(i+1)+'.'} ${esc(p.name)} ฿${f(sc(p))} ${p.st!='ok'?ST[p.st]:''} ${end&&i<(g.adv||+FN||3)&&p.st=='ok'?'✅':''}</div>`}).join('')}</div>`}).join('')||'<div class="card mut">ยังไม่มีห้อง</div>'}</div>`}
+  return `<div class="card"><div class="row"><b>ห้อง ${esc(k)}</b><span class="mut">${TH[g.phase||'lobby']} · ${Object.keys(r.P).length} คน${g.phase=='play'?' · ตา '+g.round:''}</span></div>${rk(r).slice(0,Math.max(3,g.adv||0)).map((id,i)=>{const p=r.P[id];return `<div class="lg">${i<3?'🥇🥈🥉'.slice(i*2,i*2+2):(i+1)+'.'} ${esc(p.name)} ฿${f(sc(p,g))} ${p.st!='ok'?ST[p.st]:''} ${end&&i<(g.adv||+FN||3)&&p.st=='ok'?'✅':''}</div>`}).join('')}</div>`}).join('')||'<div class="card mut">ยังไม่มีห้อง</div>'}</div>`}
 function admin(){asb=supabase.createClient(SB_URL,SB_KEY);adLoad();setInterval(adLoad,3000)}
 const finalBtn=()=>{if(!G.final)return'';const i=rank().indexOf(uid);
  if(i<0||i>=(G.adv||3)||P[uid].st!='ok')return '<div class="card">ขอบคุณที่ร่วมเล่น 🎉</div>';
@@ -303,7 +318,7 @@ function mount3d(){if(typeof THREE=='undefined')return;if(!W3)W3=init3d();const 
 function host(){
  const cells=cellsHtml();
  const cur=G.phase=='play'?P[G.order[G.turn]]:null;
- const mid=`<div class="mid card"><h2>ตาที่ ${G.round||0}/${G.max||20}</h2>${G.phase=='play'?mbanner():''}${cur?`<div class="big" style="color:${col(G.order[G.turn])}">▶ ${esc(cur.name)}</div>`:`<div class="mut">${G.phase=='end'?'จบเกม':'รอผู้เล่น…'}</div>`}${logs(5)}</div>`;
+ const mid=`<div class="mid card"><h2>ตาที่ ${G.round||0}/${G.max||20}</h2><div class="mut">เป้าหมาย ฿${f(GOAL)} หรืออยู่รอดสูงสุด</div>${G.phase=='play'?mbanner():''}${cur?`<div class="big" style="color:${col(G.order[G.turn])}">▶ ${esc(cur.name)}</div>`:`<div class="mut">${G.phase=='end'?'จบเกม':'รอผู้เล่น…'}</div>`}${logs(5)}</div>`;
  const list=part().map(id=>{const p=P[id],o=p.st!='ok';
   return `<div class="card ${o?'out':'lv'+lv(p)}"><div class="row"><b style="color:${col(id)}">● ${esc(p.name)} ${cur&&G.order[G.turn]==id?'▶':''}</b><span>฿${f(p.cash)}</span></div><div>${o?ST[p.st]+' (ผี 👻)':chips(p)}</div></div>`}).join('');
  return `<div class="row"><div><h1>เกมวางแผนชีวิต</h1><div class="mut">ห้อง <b>${room}</b></div></div><div>${G.phase!='play'&&G.phase!='end'?`<button onclick="start()" ${ids().length<2?'disabled':''}>เริ่มเกม (${ids().length} คน)</button>`:''}<button class="g" onclick="reset()">${arm?'กดอีกครั้งเพื่อยืนยัน':'รีเซ็ต'}</button></div></div>
@@ -319,8 +334,8 @@ function play(){const p=P[uid];
  else if(out)act=`<div class="card"><h3>${ST[p.st]}</h3><div class="mut">คุณเป็นผีแล้ว ป่วนผู้เล่นที่ยังอยู่ได้ ${p.ghost} ครั้ง</div><button onclick="haunt()" ${p.ghost<1||busy?'disabled':''}>👻 ปล่อยข่าวร้าย (-1,000)</button></div>`;
  else if(G.phase=='lobby')act='<div class="card">รอผู้ควบคุมเริ่มเกม…</div>';
  else if(isTurn()){
-  if(choice&&choice.t=='invest')act=`<div class="card"><h3>📈 ช่องลงทุน (3,000)</h3>${mbanner()}<div class="mut">ต่ำ: ${odds('lo')}<br>สูง: ${odds('hi')}</div><button onclick="inv('lo')" ${p.cash<3000?'disabled':''}>เสี่ยงต่ำ</button><button onclick="inv('hi')" ${p.cash<3000?'disabled':''}>เสี่ยงสูง</button><button class="g" onclick="inv('no')">ข้าม</button></div>`;
-  else if(choice)act=`<div class="card"><h3>🛡️ ซื้อประกัน</h3><div class="mut">สุขภาพ/อุบัติเหตุ จ่ายค่ารักษาตามวงเงิน · ชีวิต จ่ายทุนเมื่อเสียชีวิต</div>${Object.keys(PR).filter(k=>!p.ins.includes(k)).map(k=>`<button onclick="buy('${k}')" ${p.cash<PR[k]?'disabled':''}>${INS[k]} ฿${f(PR[k])}<br><small>คุ้มครอง ${f(CV[k])}</small></button>`).join('')}<button class="g" onclick="buy('no')">ไม่ซื้อ</button></div>`;
+  if(choice&&choice.t=='invest')act=`<div class="card"><h3>📈 ลงทุน ${f(STK)}</h3>${mbanner()}<div class="mut">ผลตอบแทนต่อรอบ (ตามสภาพตลาด)<br>เสี่ยงต่ำ: ▲ +10% · ▬ +3% · ▼ -4%<br>เสี่ยงสูง: ▲ +30% · ▬ +5% · ▼ -25%</div><button onclick="inv('lo')" ${p.cash<STK?'disabled':''}>เสี่ยงต่ำ</button><button onclick="inv('hi')" ${p.cash<STK?'disabled':''}>เสี่ยงสูง</button><button class="g" onclick="inv('no')">ข้าม</button></div>`;
+  else if(choice)act=`<div class="card"><h3>🛡️ ซื้อประกัน</h3><div class="mut">สุขภาพ/อุบัติเหตุ จ่ายค่ารักษาตามวงเงิน · ชีวิต จ่ายทุนเมื่อเสียชีวิต</div>${Object.keys(PR).filter(k=>!p.ins.includes(k)).map(k=>`<button onclick="buy('${k}')" ${p.cash<PR[k]?'disabled':''}>${INS[k]} ฿${f(PR[k])}<br><small>${k=='sv'?'มูลค่าเพิ่มทุกรอบ':'คุ้มครอง '+f(CV[k])}</small></button>`).join('')}<button class="g" onclick="buy('no')">ไม่ซื้อ</button></div>`;
   else if(p.skip>0)act=`<div class="card"><h3>⏸️ ติดพัก</h3><button onclick="skipT()" ${busy?'disabled':''}>ข้ามตานี้</button></div>`;
   else act=`<div class="card"><h2>ตาของคุณ!</h2><button style="font-size:1.4rem;width:100%;padding:20px" onclick="roll()" ${busy?'disabled':''}>${busy?'🎲 กำลังทอย…':'🎲 ทอยลูกเต๋า'}</button>${p.cash<3000&&!(p.debt>0)?`<button class="g" style="width:100%" onclick="loan()" ${busy?'disabled':''}>🏦 กู้สถาบันการเงิน รับ 8,000 (คืน 10,000)</button><div class="mut">เงินใกล้หมดกู้ได้ 1 ครั้ง หักคืนจากโบนัสผ่านรอบ</div>`:''}</div>`}
  else act=`<div class="card mut">รอ <b style="color:${col(G.order[G.turn])}">${esc((P[G.order[G.turn]]||{}).name||'')}</b> เล่น…</div>`;
